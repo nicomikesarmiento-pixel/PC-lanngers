@@ -15,70 +15,83 @@ app.use(compression());
 app.use(cors());
 app.use(express.json());
 
-// Server-side fetch function para ang Cloud Server ang umako ng lahat ng trabaho
-async function fetchWebsiteFromCloudServer(targetUrl) {
+// Universal Cloud Proxy Router: Ang Render Server ang kokonekta sa kahit anong hinanap mo
+app.get('/cloud-engine', async (req, res) => {
+    let targetUrl = req.query.url;
+    if (!targetUrl) return res.status(400).send('Walang URL na ibinigay.');
+
+    // Kung salita ang tinype (hindi URL), awtomatikong ididirekta sa DuckDuckGo HTML search engine
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+        targetUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(targetUrl);
+    }
+
     try {
+        // Ang Cloud Server ang gagawa ng buong trabaho at internet request
         const response = await fetch(targetUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5'
+            },
+            redirect: 'follow'
         });
-        const html = await response.text();
-        return { success: true, html };
+
+        let html = await response.text();
+        
+        // Inaayos natin ang mga relative links sa HTML para manatili silang dumadaloy sa Cloud Server
+        const baseObj = new URL(response.url);
+        const baseUrl = `${baseObj.protocol}//${baseObj.host}`;
+        
+        // Ibinabalik natin ang nalinisan at na-render na pahina papunta sa phone mo bilang viewer screen lang
+        res.send(`
+            <!DOCTYPE html>
+            <html lang="tl">
+            <head>
+                <meta charset="UTF-8">
+                <base href="${baseUrl}/">
+                <title>Cloud Engine View</title>
+                <style>
+                    body { margin: 0; background: #fff; font-family: sans-serif; }
+                </style>
+            </head>
+            <body>
+                ${html}
+                <script>
+                    // Ginagawa nating cloud-routed ang lahat ng link at form submission para hindi sumablay sa GET/POST
+                    document.querySelectorAll('a').forEach(a => {
+                        const href = a.getAttribute('href');
+                        if (href && !href.startsWith('javascript:') && !href.startsWith('#')) {
+                            const absoluteUrl = new URL(href, document.baseURI).href;
+                            a.onclick = (e) => {
+                                e.preventDefault();
+                                window.parent.loadCloudUrl(absoluteUrl);
+                            };
+                        }
+                    });
+
+                    document.querySelectorAll('form').forEach(form => {
+                        form.onsubmit = (e) => {
+                            e.preventDefault();
+                            const formData = new FormData(form);
+                            const actionUrl = new URL(form.getAttribute('action') || window.location.href, document.baseURI).href;
+                            const params = new URLSearchParams(formData).toString();
+                            const finalTarget = actionUrl.includes('?') ? actionUrl + '&' + params : actionUrl + '?' + params;
+                            window.parent.loadCloudUrl(finalTarget);
+                        };
+                    });
+                </script>
+            </body>
+            </html>
+        `);
     } catch (error) {
-        return { success: false, error: error.message };
-    }
-}
-
-app.get('/cloud-proxy', async (req, res) => {
-    let url = req.query.url;
-    if (!url) return res.status(400).send('Walang URL na ibinigay.');
-    
-    // Ginagamit natin ang GET-based query ng DuckDuckGo para maiwasan ang POST error
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(url);
-    }
-
-    const result = await fetchWebsiteFromCloudServer(url);
-    
-    if (!result.success) {
-        return res.send(`
-            <html><body style="background:#0f172a;color:#fff;font-family:sans-serif;padding:20px;text-align:center;">
-                <h3>⚠️ Cloud Server Notice</h3>
-                <p>Hindi maabot ng Cloud Server ang site na ito: ${result.error}</p>
-                <a href="/" style="color:#38bdf8;">Bumalik sa Home</a>
-            </body></html>
+        res.send(`
+            <div style="padding: 20px; font-family: sans-serif; background: #0f172a; color: #fff; text-align: center;">
+                <h3>⚠️ Cloud Server Engine Notice</h3>
+                <p>Hindi maabot ng Cloud Server ang pahinang ito: ${error.message}</p>
+                <a href="/" style="color: #38bdf8;">Bumalik sa Home</a>
+            </div>
         `);
     }
-
-    res.send(`
-        <!DOCTYPE html>
-        <html lang="tl">
-        <head>
-            <meta charset="UTF-8">
-            <title>Cloud Stream View</title>
-            <style>
-                body { margin: 0; background: #0f172a; color: #fff; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-                .top-bar { background: #1e293b; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; font-size: 11px; }
-                .stream-frame { flex: 1; width: 100%; border: none; background: #fff; }
-            </style>
-        </head>
-        <body>
-            <div class="top-bar">
-                <span style="color: #38bdf8;">☁️ Cloud Server Processed (Zero Phone Load)</span>
-                <a href="#" onclick="parent.closeApp()" style="color: #f97316; text-decoration: none; font-weight: bold;">✕ Isara</a>
-            </div>
-            <iframe id="proxied-frame" class="stream-frame"></iframe>
-            <script>
-                const frame = document.getElementById('proxied-frame');
-                const doc = frame.contentDocument || frame.contentWindow.document;
-                doc.open();
-                doc.write(\`${result.html.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`);
-                doc.close();
-            </script>
-        </body>
-        </html>
-    `);
 });
 
 app.get('/', (req, res) => {
@@ -88,7 +101,7 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-            <title>Cloud OS Pro - Remote Viewer</title>
+            <title>Cloud OS Pro - Remote Cloud Phone</title>
             <style>
                 * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
                 body, html { width: 100%; height: 100%; background-color: #030712; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #fff; overflow: hidden; display: flex; justify-content: center; align-items: center; }
@@ -129,7 +142,7 @@ app.get('/', (req, res) => {
                 <div class="status-bar">
                     <span id="clock">12:00 PM</span>
                     <div class="status-icons">
-                        <span>☁️ Cloud Engine</span>
+                        <span>☁️ Cloud Stream</span>
                         <span>🔋 100%</span>
                     </div>
                 </div>
@@ -185,7 +198,7 @@ app.get('/', (req, res) => {
 
                 function loadCloudUrl(url) {
                     document.getElementById('url-input').value = url;
-                    const proxyStreamUrl = '/cloud-proxy?url=' + encodeURIComponent(url);
+                    const proxyStreamUrl = '/cloud-engine?url=' + encodeURIComponent(url);
                     
                     document.getElementById('viewer-content').innerHTML = \`
                         <iframe src="\${proxyStreamUrl}" style="width: 100%; flex: 1; border: none; background: #fff;"></iframe>

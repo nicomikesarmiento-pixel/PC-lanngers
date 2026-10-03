@@ -13,8 +13,8 @@ app.use(express.json());
 app.get('/', (req, res) => {
     res.json({
         status: "online",
-        engine: "Stable YouTube Proxy Engine",
-        endpoint: "/api/youtube?search=keyword"
+        engine: "Lightweight YouTube Proxy Engine",
+        usage: "Gamitin ang /api/youtube?search=keyword"
     });
 });
 
@@ -91,6 +91,6 @@ app.get('/api/youtube', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Lightweight YouTube Engine running on port ${PORT}`);
 });
-                
+        

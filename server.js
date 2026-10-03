@@ -29,12 +29,11 @@ async function getServerMetrics() {
     return { ip, speed: speed < 1000 ? `${speed}ms` : '1.2s' };
 }
 
-// 🌐 Advanced Web & Video Proxy Engine (Render Server ang kumukuha ng buong site)
+// 🌐 Advanced Full-Feature Proxy Engine
 app.get('/proxy', async (req, res) => {
     let targetUrl = req.query.url;
     if (!targetUrl) return res.redirect('/browser');
 
-    // Kung YouTube link ang inilagay, i-convert natin sa embed-friendly o mabilis na format para hindi ma-block
     if (targetUrl.includes('youtube.com/watch?v=')) {
         const videoId = new URL(targetUrl).searchParams.get('v');
         targetUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
@@ -42,7 +41,6 @@ app.get('/proxy', async (req, res) => {
         const videoId = targetUrl.split('youtu.be/')[1].split('?')[0];
         targetUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
     } else if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-        // Kung hindi URL at text lang (hal. "pakinggan lofi"), gawin nating Google search proxy
         targetUrl = `https://www.google.com/search?q=${encodeURIComponent(targetUrl)}`;
     }
 
@@ -54,20 +52,39 @@ app.get('/proxy', async (req, res) => {
             }
         });
 
-        let contentType = response.headers.get('content-type') || 'text/html';
+        let contentType = response.headers.get('content-type'] || 'text/html';
         let body = await response.text();
 
-        // I-inject natin ang maliit na top bar para makapag-navigate ka pa rin habang nasa loob ng proxy site
+        // Kung HTML, i-inject ang top navbar at i-fix ang relative paths para hindi masira ang design
         if (contentType.includes('text/html')) {
-            const topBarInjection = `
-                <div style="position:fixed;top:0;left:0;width:100%;background:#0f172a;border-bottom:2px solid #38bdf8;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;z-index:999999;font-family:sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.5);">
-                    <a href="/" style="background:#1e293b;color:#38bdf8;padding:4px 10px;border-radius:6px;font-size:11px;text-decoration:none;font-weight:bold;">🏠 Render Home</a>
-                    <span style="color:#94a3b8;font-size:10px;">🛡️ Render Proxy Active (Server-Side Reading)</span>
-                    <a href="/browser" style="background:#38bdf8;color:#0f172a;padding:4px 10px;border-radius:6px;font-size:11px;text-decoration:none;font-weight:bold;">🔄 Bagong Search</a>
+            const parsedTarget = new URL(targetUrl);
+            const baseUrl = `${parsedTarget.protocol}//${parsedTarget.host}`;
+
+            const topBar = `
+                <div style="background:#0f172a;border-bottom:2px solid #38bdf8;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;font-family:sans-serif;position:sticky;top:0;z-index:999999;box-shadow:0 4px 12px rgba(0,0,0,0.5);">
+                    <div style="display:flex;align-items:center;gap:6px;width:100%;">
+                        <a href="/" style="background:#1e293b;color:#38bdf8;padding:6px 10px;border-radius:6px;font-size:11px;text-decoration:none;font-weight:bold;">🏠 Home</a>
+                        <form action="/proxy" method="GET" style="display:flex;gap:4px;flex:1;margin:0;">
+                            <input type="text" name="url" value="${targetUrl}" style="flex:1;height:30px;background:#090d16;border:1px solid #38bdf8;border-radius:6px;color:#fff;padding:0 8px;font-size:11px;outline:none;" />
+                            <button type="submit" style="background:#38bdf8;border:none;color:#0f172a;font-weight:bold;padding:0 10px;height:30px;border-radius:6px;cursor:pointer;font-size:11px;">Go</button>
+                        </form>
+                    </div>
                 </div>
-                <div style="height:45px;"></div>
             `;
-            body = topBarInjection + body;
+
+            // Ayusin ang base href para sumalo ng relative links
+            const baseInjection = `<base href="${baseUrl}/">`;
+            if (body.includes('<head>')) {
+                body = body.replace('<head>', `<head>${baseInjection}`);
+            } else {
+                body = baseInjection + body;
+            }
+
+            if (body.includes('<body')) {
+                body = body.replace(/<body([^>]*)>/i, `<body$1>${topBar}`);
+            } else {
+                body = topBar + body;
+            }
         }
 
         res.setHeader('Content-Type', contentType);
@@ -75,8 +92,8 @@ app.get('/proxy', async (req, res) => {
     } catch (err) {
         res.status(500).send(`
             <div style="background:#030712;color:#fff;font-family:sans-serif;padding:40px;text-align:center;">
-                <h2 style="color:#f43f5e;margin-bottom:10px;">⚠️️ Nabigo ang Render Proxy</h2>
-                <p style="color:#94a3b8;font-size:12px;margin-bottom:20px;">Hindi ma-access ng server ang hiningi mong URL dahil sa security restrictions ng target website.</p>
+                <h2 style="color:#f43f5e;margin-bottom:10px;">⚠ Nabigo ang Proxy Request</h2>
+                <p style="color:#94a3b8;font-size:12px;margin-bottom:20px;">Hindi maabot ng server ang target website.</p>
                 <a href="/browser" style="background:#38bdf8;color:#0f172a;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:12px;">Bumalik sa Browser</a>
             </div>
         `);
@@ -85,77 +102,15 @@ app.get('/proxy', async (req, res) => {
 
 // Browser Interface
 app.get('/browser', async (req, res) => {
-    let queryUrl = req.query.url ? req.query.url.trim() : 'https://www.youtube.com';
-    const metrics = await getServerMetrics();
-
+    let queryUrl = req.query.url ? req.query.url.trim() : 'https://www.google.com';
+    
     browserHistory.push({
         url: queryUrl,
         time: new Date().toLocaleTimeString()
     });
     if (browserHistory.length > 25) browserHistory.shift();
 
-    const fetchStart = Date.now();
-    await new Promise(r => setTimeout(r, 80));
-    const fetchTime = Date.now() - fetchStart;
-
-    res.send(`
-        <!DOCTYPE html>
-        <html lang="tl">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Render Cloud Browser</title>
-            <style>
-                * { box-sizing: border-box; margin: 0; padding: 0; }
-                body { font-family: sans-serif; background: #030712; color: #fff; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-                .browser-nav { background: #0f172a; border-bottom: 1px solid rgba(56,189,248,0.2); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-                .top-info-bar { display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: #94a3b8; padding: 0 4px; }
-                .top-info-bar span b { color: #34d399; font-family: monospace; }
-                .url-form { display: flex; gap: 4px; align-items: center; }
-                .btn-action { background: #1e293b; border: 1px solid #475569; color: #e2e8f0; padding: 6px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; text-decoration: none; display: flex; align-items: center; justify-content: center; height: 34px; }
-                .url-input { flex: 1; height: 34px; background: #090d16; border: 1px solid #38bdf8; border-radius: 6px; color: #fff; padding: 0 10px; font-size: 11px; outline: none; }
-                .go-btn { background: #38bdf8; border: none; color: #0f172a; font-weight: bold; padding: 0 12px; height: 34px; border-radius: 6px; cursor: pointer; font-size: 11px; }
-                
-                .viewport { flex: 1; background: #000; width: 100%; position: relative; }
-                .viewport iframe { width: 100%; height: 100%; border: none; background: #fff; }
-                .bottom-info { background: #0f172a; border-top: 1px solid rgba(56,189,248,0.2); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
-                .server-badge { background: rgba(15,23,42,0.9); border: 1px solid rgba(56,189,248,0.3); padding: 6px 10px; border-radius: 6px; font-size: 10px; color: #94a3b8; }
-                .quick-links { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
-                .quick-btn { background: #1e293b; border: 1px solid #475569; color: #38bdf8; padding: 4px 10px; border-radius: 6px; font-size: 10px; text-decoration: none; white-space: nowrap; }
-            </style>
-        </head>
-        <body>
-            <div class="browser-nav">
-                <div class="top-info-bar">
-                    <div>Server IP: <b>${metrics.ip}</b></div>
-                    <div>Proxy Speed: <b style="color: #38bdf8;">${fetchTime}ms</b></div>
-                </div>
-                <form action="/browser" method="GET" class="url-form">
-                    <a href="/" class="btn-action" title="Home">🏠</a>
-                    <button type="button" class="btn-action" onclick="location.reload()">🔄</button>
-                    <input type="text" name="url" class="url-input" value="${queryUrl}" placeholder="I-type ang URL o YouTube link dito..." />
-                    <button type="submit" class="go-btn">Go</button>
-                </form>
-            </div>
-            
-            <div class="viewport">
-                <!-- Ang Render server ang dumadaan sa proxy para i-load ang website -->
-                <iframe src="/proxy?url=${encodeURIComponent(queryUrl)}"></iframe>
-            </div>
-
-            <div class="bottom-info">
-                <div class="server-badge">
-                    ⚡ <b>Server-Side Web Proxy:</b> Ang Render server ang nagbabasa ng website/video. Ligtas ang data at signal ng phone mo.
-                </div>
-                <div class="quick-links">
-                    <a href="/browser?url=https://www.youtube.com" class="quick-btn">📺 YouTube Cloud</a>
-                    <a href="/browser?url=https://en.wikipedia.org" class="quick-btn">📖 Wikipedia</a>
-                    <a href="/browser?url=https://www.google.com" class="quick-btn">🔍 Google Search</a>
-                </div>
-            </div>
-        </body>
-        </html>
-    `);
+    res.redirect(`/proxy?url=${encodeURIComponent(queryUrl)}`);
 });
 
 // History Page
@@ -164,7 +119,7 @@ app.get('/history', (req, res) => {
         ? '<p style="color:#94a3b8; font-size:11px; text-align:center; margin-top:20px;">Wala pang history.</p>'
         : browserHistory.map(item => `
             <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(255,255,255,0.08); padding:8px; border-radius:6px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
-                <a href="/browser?url=${encodeURIComponent(item.url)}" style="color:#38bdf8; font-size:10px; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px;">${item.url}</a>
+                <a href="/proxy?url=${encodeURIComponent(item.url)}" style="color:#38bdf8; font-size:10px; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px;">${item.url}</a>
                 <span style="color:#64748b; font-size:8px;">${item.time}</span>
             </div>
         `).reverse().join('');
@@ -237,12 +192,12 @@ app.get('/', async (req, res) => {
                 <div class="screen-area">
                     <div class="metrics-card">
                         <div>Server IP: <span class="server-ip-text">${metrics.ip}</span></div>
-                        <div>Status: <span style="color:#38bdf8;">Proxy Active</span></div>
+                        <div>Status: <span style="color:#38bdf8;">Full Proxy Active</span></div>
                     </div>
                     <div class="search-box-card">
                         <h2>🌐 Render Cloud Web Proxy</h2>
                         <form action="/browser" method="GET">
-                            <input type="text" name="url" placeholder="Maghanap o mag-paste ng YouTube URL..." />
+                            <input type="text" name="url" placeholder="Maghanap o mag-paste ng URL..." />
                             <button type="submit">Buksan sa Cloud Browser</button>
                         </form>
                     </div>
@@ -266,4 +221,4 @@ app.get('/', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Cloud Web Proxy running on port ${PORT}`);
 });
-               
+        

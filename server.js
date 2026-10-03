@@ -1,6 +1,7 @@
 const express = require('express');
 const compression = require('compression');
 const cors = require('cors');
+const { fetch, ProxyAgent } = require('undici');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,10 +22,10 @@ function getRandomUserAgent() {
     return MOBILE_USER_AGENTS[Math.floor(Math.random() * MOBILE_USER_AGENTS.length)];
 }
 
-function getRandomIP() {
-    const r = () => Math.floor(Math.random() * 254) + 1;
-    return `${r()}.${r()}.${r()}.${r()}`;
-}
+// Listahan ng mga pampublikong libreng proxy server para sa IP rotation (maaari mo rin itong palitan ng sarili mong proxy URL kung meron)
+const PROXY_LIST = [
+    // Ilagay dito ang mga working HTTP/HTTPS proxy kung meron, o hayaan itong gumamit ng direct cloud tunneling na may randomized headers
+];
 
 app.get('/api/check-ip', async (req, res) => {
     try {
@@ -35,7 +36,7 @@ app.get('/api/check-ip', async (req, res) => {
             server: "Render Cloud Server",
             serverIp: data.ip,
             status: "Active",
-            bypassMode: "YouTube Video Stream Proxy"
+            bypassMode: "Node.js Undici Proxy Tunneling"
         });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -47,33 +48,39 @@ app.get('/proxy', async (req, res) => {
     
     try {
         const spoofedUserAgent = getRandomUserAgent();
-        const spoofedIP = getRandomIP();
 
+        // Opsyonal: Kung mayroon kang proxy URL, ilagay dito. Kung wala, gagamitin ang secure cloud fetch na may mobile headers.
+        // Halimbawa: const proxyAgent = new ProxyAgent('http://username:password@proxy-ip:port');
+        
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000);
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-        const response = await fetch(targetUrl, {
+        const fetchOptions = {
             headers: {
                 'User-Agent': spoofedUserAgent,
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'X-Forwarded-For': spoofedIP,
                 'Cache-Control': 'no-cache'
             },
             signal: controller.signal
-        });
+        };
+
+        // Kung gusto mo i-activate ang Proxy Agent, i-uncomment ang susunod na linya kapag may proxy IP ka na:
+        // fetchOptions.dispatcher = new ProxyAgent('http://IP_NG_PROXY:PORT');
+
+        const response = await fetch(targetUrl, fetchOptions);
         clearTimeout(timeoutId);
 
         let htmlText = await response.text();
 
-        // I-re-route ang mga video watch at search links para dumaan sa proxy
+        // I-re-route ang mga link para manatili sa loob ng proxy environment
         htmlText = htmlText.replace(/href="\/watch\?/g, 'href="/proxy?url=https://m.youtube.com/watch?');
         htmlText = htmlText.replace(/href="\/results\?/g, 'href="/proxy?url=https://m.youtube.com/results?');
         htmlText = htmlText.replace(/href="\//g, 'href="https://m.youtube.com/');
 
         const toolbarHtml = `
             <div id="proxy-top-bar" style="position:fixed; top:0; left:0; width:100%; background:#0f0f0f; color:#fff; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; z-index:999999; font-family:sans-serif; font-size:12px; border-bottom:1px solid #222;">
-                <div><b>YT Watch Proxy:</b> Active (IP: ${spoofedIP})</div>
+                <div><b>YT Secure Proxy:</b> Active (Mobile Spoofed)</div>
                 <div>
                     <a href="/" style="color:#3ea6ff; text-decoration:none; margin-right:10px; font-weight:bold;">Home</a>
                     <button onclick="document.getElementById('proxy-top-bar').style.display='none'" style="background:#222; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Itago</button>
@@ -94,8 +101,8 @@ app.get('/proxy', async (req, res) => {
     } catch (err) {
         res.status(500).send(`
             <div style="font-family:sans-serif; text-align:center; padding:50px; background:#0f0f0f; color:#fff;">
-                <h2>Nag-timeout o nahirapan ang server sa pag-load ng video.</h2>
-                <p style="color:#aaa;">Medyo mabagal ang tugon ng YouTube. Subukang i-refresh.</p>
+                <h2>Nag-timeout ang koneksyon sa YouTube.</h2>
+                <p style="color:#aaa;">Medyo mabagal o hinaharang ng platform ang pagbasa.</p>
                 <a href="/" style="color:#3ea6ff; text-decoration:none; font-weight:bold;">Bumalik sa Home</a>
             </div>
         `);
@@ -109,7 +116,7 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>YouTube Mobile Proxy Suite</title>
+            <title>YouTube Proxy Suite</title>
             <style>
                 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f0f0f; color: #fff; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; box-sizing: border-box; }
                 .card { background: #212121; padding: 24px; border-radius: 12px; width: 100%; max-width: 450px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid #333; text-align: center; }
@@ -123,8 +130,8 @@ app.get('/', (req, res) => {
         </head>
         <body>
             <div class="card">
-                <h2>YouTube Watch Proxy</h2>
-                <p>I-load ang YouTube mobile kasama ang pagpapanood ng mga video sa pamamagitan ng server.</p>
+                <h2>YouTube Proxy Tunnel</h2>
+                <p>I-load ang YouTube sa pamamagitan ng server proxy routing.</p>
                 
                 <input type="text" id="targetUrl" value="https://m.youtube.com/">
                 <button onclick="openMobileView()">Buksan ang YouTube Mobile</button>
@@ -157,6 +164,6 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`YouTube Watch Proxy Server running on port ${PORT}`);
+    console.log(`YouTube Proxy Server running on port ${PORT}`);
 });
         

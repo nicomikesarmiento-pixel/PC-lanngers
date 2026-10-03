@@ -10,7 +10,25 @@ app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// 1. IP Check Endpoint
+// Listahan ng mga lehitimong Mobile User-Agents at Random IP generators para sa anti-bot bypass
+const MOBILE_USER_AGENTS = [
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Linux; Android 10; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36'
+];
+
+function getRandomUserAgent() {
+    return MOBILE_USER_AGENTS[Math.floor(Math.random() * MOBILE_USER_AGENTS.length)];
+}
+
+function getRandomIP() {
+    // Gumagawa ng random IP para sa X-Forwarded-For header spoofing
+    const r = () => Math.floor(Math.random() * 254) + 1;
+    return `${r()}.${r()}.${r()}.${r()}`;
+}
+
+// 1. IP Check Endpoint para patunay na Render server ang nagpapatakbo
 app.get('/api/check-ip', async (req, res) => {
     try {
         const response = await fetch('https://api.ipify.org?format=json');
@@ -19,14 +37,14 @@ app.get('/api/check-ip', async (req, res) => {
             success: true,
             runningOn: "Render Cloud Server",
             serverIp: data.ip,
-            note: "Render server ang nagpoproseso at humihila ng data mula sa YouTube."
+            note: "Server ang direktang nagpoproseso gamit ang mobile spoofing at random IP headers."
         });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// 2. YouTube Lite Web Interface
+// 2. Main Web Interface (Native App UI)
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -34,48 +52,56 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>YouTube Lite Streamer</title>
+            <title>FB Watch Mobile Proxy Suite</title>
             <style>
-                body { font-family: Arial, sans-serif; background: #121212; color: #fff; margin: 0; padding: 10px; }
-                h2 { text-align: center; color: #ff4444; margin-bottom: 10px; font-size: 20px; }
+                body { font-family: Arial, sans-serif; background: #0f1115; color: #fff; margin: 0; padding: 12px; }
+                h2 { text-align: center; color: #2d88ff; margin-bottom: 12px; font-size: 20px; }
                 .top-bar { display: flex; gap: 8px; max-width: 600px; margin: 0 auto 10px auto; }
-                input { flex: 1; padding: 10px; border-radius: 4px; border: 1px solid #444; background: #222; color: #fff; font-size: 15px; }
-                button { padding: 10px 15px; background: #ff0000; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-                button.blue { background: #0066cc; font-size: 13px; }
-                button:hover { opacity: 0.8; }
-                #ip-display { max-width: 600px; margin: 0 auto 10px auto; background: #1a1a1a; padding: 8px; border-radius: 4px; font-size: 12px; color: #00ffcc; display: none; word-break: break-all; }
-                #player-container { max-width: 600px; margin: 0 auto 15px auto; display: none; }
-                iframe { width: 100%; height: 250px; border-radius: 6px; border: none; }
+                input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #333; background: #1a1d24; color: #fff; font-size: 14px; outline: none; }
+                button { padding: 12px 18px; background: #2d88ff; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+                button.blue { background: #0066cc; font-size: 13px; width: 100%; }
+                button:hover { opacity: 0.9; }
+                #ip-display { max-width: 600px; margin: 0 auto 12px auto; background: #161922; padding: 10px; border-radius: 6px; font-size: 12px; color: #00ffcc; display: none; word-break: break-all; border: 1px solid #222; }
+                
+                #native-player-box { max-width: 600px; margin: 0 auto 15px auto; background: #161922; padding: 12px; border-radius: 8px; display: none; border: 1px solid #333; }
+                #active-video-title { font-size: 13px; font-weight: bold; margin-bottom: 8px; color: #fff; }
+                iframe { width: 100%; height: 280px; border-radius: 6px; border: none; background: #000; }
+
                 .video-list { max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
-                .video-item { display: flex; gap: 10px; background: #1e1e1e; padding: 8px; border-radius: 6px; cursor: pointer; align-items: center; }
-                .video-item:hover { background: #2a2a2a; }
-                .video-item img { width: 110px; height: 62px; object-fit: cover; border-radius: 4px; }
+                .video-item { display: flex; gap: 10px; background: #161922; padding: 10px; border-radius: 8px; cursor: pointer; align-items: center; border: 1px solid #222; }
+                .video-item:hover { background: #1f232d; }
+                .video-item img { width: 110px; height: 62px; object-fit: cover; border-radius: 4px; background: #222; }
                 .video-title { font-size: 13px; font-weight: bold; color: #fff; line-height: 1.3; }
-                .video-channel { font-size: 11px; color: #aaa; margin-top: 4px; }
-                .loading { text-align: center; color: #aaa; font-size: 14px; margin-top: 20px; display: none; }
+                .video-channel { font-size: 11px; color: #8ab4f8; margin-top: 4px; }
+                .loading { text-align: center; color: #888; font-size: 14px; margin-top: 20px; display: none; }
             </style>
         </head>
         <body>
-            <h2>YouTube Lite</h2>
+            <h2>FB Watch Mobile Proxy</h2>
             
             <div class="top-bar">
-                <button class="blue" onclick="checkServerIP()" style="width: 100%;">I-check ang Server IP</button>
+                <button class="blue" onclick="checkServerIP()">I-check ang Server IP (Mobile Bypass Status)</button>
             </div>
             <div id="ip-display">Kinukuha ang Server IP...</div>
 
             <div class="top-bar">
-                <input type="text" id="query" placeholder="Maghanap..." onkeypress="if(event.key === 'Enter') searchVideos()">
-                <button onclick="searchVideos()">Hanapin</button>
+                <input type="text" id="query" value="https://m.facebook.com/watch/" placeholder="Ilagay ang FB Watch link dito..." onkeypress="if(event.key === 'Enter') loadFacebookContent()">
+                <button onclick="loadFacebookContent()">Buksan</button>
             </div>
 
-            <div id="player-container">
-                <iframe id="youtube-player" src="" allowfullscreen></iframe>
+            <div id="native-player-box">
+                <div id="active-video-title">Video Player</div>
+                <iframe id="video-player" src="" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>
             </div>
 
-            <div class="loading" id="loading-text">Hinahanap ang mga video...</div>
+            <div class="loading" id="loading-text">Binabasa ng Server ang Facebook Link...</div>
             <div class="video-list" id="results"></div>
 
             <script>
+                window.onload = () => {
+                    loadFacebookContent();
+                };
+
                 async function checkServerIP() {
                     const ipBox = document.getElementById('ip-display');
                     ipBox.style.display = 'block';
@@ -84,7 +110,7 @@ app.get('/', (req, res) => {
                         const res = await fetch('/api/check-ip');
                         const data = await res.json();
                         if(data.success) {
-                            ipBox.innerHTML = \`<b>Server IP:</b> \${data.serverIp} (\${data.runningOn})\`;
+                            ipBox.innerHTML = \`<b>Server IP:</b> \${data.serverIp} (\${data.runningOn})<br><i>\${data.note}</i>\`;
                         } else {
                             ipBox.innerHTML = "Hindi nakuha ang IP.";
                         }
@@ -93,48 +119,55 @@ app.get('/', (req, res) => {
                     }
                 }
 
-                async function searchVideos() {
-                    const q = document.getElementById('query').value;
-                    if(!q) return;
-                    
+                async function loadFacebookContent() {
+                    const inputVal = document.getElementById('query').value;
                     const list = document.getElementById('results');
                     const loader = document.getElementById('loading-text');
+                    
                     list.innerHTML = '';
                     loader.style.display = 'block';
 
                     try {
-                        const res = await fetch('/api/youtube?search=' + encodeURIComponent(q));
+                        const res = await fetch('/api/fetch-fb?url=' + encodeURIComponent(inputVal));
                         const data = await res.json();
                         loader.style.display = 'none';
 
                         if(data.success && data.videos && data.videos.length > 0) {
+                            if(inputVal.includes('/watch') || inputVal.includes('/videos/') || inputVal.includes('/share/v/')) {
+                                playInNativeApp(inputVal, "Direktang Pinapanood mula sa Link");
+                            }
+
                             data.videos.forEach(v => {
                                 const item = document.createElement('div');
                                 item.className = 'video-item';
-                                item.onclick = () => playVideo(v.videoId);
+                                item.onclick = () => playInNativeApp(v.videoUrl, v.title);
                                 item.innerHTML = \`
                                     <img src="\${v.thumbnail}" />
                                     <div>
                                         <div class="video-title">\${v.title}</div>
-                                        <div class="video-channel">\${v.channel}</div>
+                                        <div class="video-channel">Server-Sourced Mobile Proxy</div>
                                     </div>
                                 \`;
                                 list.appendChild(item);
                             });
                         } else {
-                            list.innerHTML = '<p style="text-align:center; color:#aaa;">Walang nahanap o na-block ng anti-bot.</p>';
+                            list.innerHTML = '<p style="text-align:center; color:#888;">Walang nakitang video o protektado ang link.</p>';
                         }
                     } catch (e) {
                         loader.style.display = 'none';
-                        list.innerHTML = '<p style="text-align:center; color:#ff4444;">May error sa koneksyon.</p>';
+                        list.innerHTML = '<p style="text-align:center; color:#ff4444;">May error sa server request.</p>';
                     }
                 }
 
-                function playVideo(id) {
-                    const playerContainer = document.getElementById('player-container');
-                    const player = document.getElementById('youtube-player');
-                    player.src = 'https://www.youtube.com/embed/' + id + '?autoplay=1';
-                    playerContainer.style.display = 'block';
+                function playInNativeApp(url, title) {
+                    const playerBox = document.getElementById('native-player-box');
+                    const player = document.getElementById('video-player');
+                    const titleDiv = document.getElementById('active-video-title');
+
+                    titleDiv.innerText = title;
+                    player.src = 'https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(url) + '&show_text=false&width=500&autoplay=true';
+                    
+                    playerBox.style.display = 'block';
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 }
             </script>
@@ -143,70 +176,56 @@ app.get('/', (req, res) => {
     `);
 });
 
-// 3. YouTube Lite API Endpoint (Inago ang paghila para iwas anti-bot)
-app.get('/api/youtube', async (req, res) => {
-    const searchQuery = req.query.search;
-
-    if (!searchQuery) {
-        return res.status(400).json({ success: false, error: "Walang search query." });
-    }
-
+// 3. Advanced Server-Side Mobile Spoofing Proxy Endpoint
+app.get('/api/fetch-fb', async (req, res) => {
+    let targetUrl = req.query.url || 'https://m.facebook.com/watch/';
+    
     try {
-        // Ginagamit natin ang YouTube embedded search/suggestions o RSS/MRSS feed approach para hindi ma-block
-        const targetUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}&persist_app=1&app=m`;
-        
+        const spoofedUserAgent = getRandomUserAgent();
+        const spoofedIP = getRandomIP();
+
+        // Ginagamit ng server ang randomized mobile headers para malusutan ang anti-bot at IP flagging
         const response = await fetch(targetUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                'Accept-Language': 'fil-PH,fil;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
+                'User-Agent': spoofedUserAgent,
+                'Accept-Language': 'en-US,en;q=0.9,fil;q=0.8',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'X-Forwarded-For': spoofedIP,
+                'Cache-Control': 'no-cache'
             }
         });
 
         const htmlText = await response.text();
-        const match = htmlText.match(/ytInitialData\s*=\s*(\{.+?\});<\/script>/);
-
-        if (!match) {
-            return res.status(500).json({ success: false, error: "Naharangan ng YouTube bot detection." });
-        }
-
-        const ytData = JSON.parse(match[1]);
         
-        // Sinisipat natin ang iba't ibang posibleng lokasyon ng video list sa JSON response ng YouTube mobile view
-        let contents = null;
-        try {
-            contents = ytData.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents ||
-                       ytData.contents?.sectionListRenderer?.contents;
-        } catch (e) {
-            contents = null;
+        let videoList = [];
+        const linkRegex = /href="(\/watch\/\?v=\d+|\/[^"]+\/videos\/[^"]+|\/share\/v\/[^"]+)"/g;
+        let match;
+        
+        while ((match = linkRegex.exec(htmlText)) !== null && videoList.length < 20) {
+            let path = match[1];
+            if (!path.startsWith('http')) {
+                path = 'https://m.facebook.com' + path;
+            }
+            
+            if (!videoList.some(v => v.videoUrl === path)) {
+                videoList.push({
+                    title: "Facebook Watch Stream Item",
+                    videoUrl: path,
+                    thumbnail: "https://via.placeholder.com/110x62?text=FB+Watch"
+                });
+            }
         }
 
-        let videoList = [];
-
-        if (contents) {
-            for (let section of contents) {
-                const items = section.itemSectionRenderer?.contents || section.richGridRenderer?.contents;
-                if (items) {
-                    for (let item of items) {
-                        const video = item.videoRenderer || item.richItemRenderer?.content?.videoRenderer;
-                        if (video && video.videoId) {
-                            videoList.push({
-                                title: video.title?.runs?.[0]?.text || video.title?.simpleText || "No Title",
-                                videoId: video.videoId,
-                                thumbnail: `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`,
-                                channel: video.ownerText?.runs?.[0]?.text || video.shortBylineText?.runs?.[0]?.text || "Unknown"
-                            });
-                        }
-                    }
-                }
-            }
+        if (videoList.length === 0) {
+            videoList.push({
+                title: "Buksan ang Facebook Watch URL",
+                videoUrl: targetUrl,
+                thumbnail: "https://via.placeholder.com/110x62?text=FB+Link"
+            });
         }
 
         res.json({
             success: true,
-            totalResults: videoList.length,
             videos: videoList
         });
 
@@ -216,6 +235,6 @@ app.get('/api/youtube', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`YouTube Lite server running on port ${PORT}`);
+    console.log(`FB Watch Mobile Proxy Server running on port ${PORT}`);
 });
-        
+                    

@@ -29,7 +29,6 @@ async function getServerMetrics() {
     return { ip, speed: speed < 1000 ? `${speed}ms` : '1.2s' };
 }
 
-// 🌐 Advanced Full-Feature Proxy Engine
 app.get('/proxy', async (req, res) => {
     let targetUrl = req.query.url;
     if (!targetUrl) return res.redirect('/browser');
@@ -52,10 +51,9 @@ app.get('/proxy', async (req, res) => {
             }
         });
 
-        let contentType = response.headers.get('content-type'] || 'text/html';
+        let contentType = response.headers.get('content-type') || 'text/html';
         let body = await response.text();
 
-        // Kung HTML, i-inject ang top navbar at i-fix ang relative paths para hindi masira ang design
         if (contentType.includes('text/html')) {
             const parsedTarget = new URL(targetUrl);
             const baseUrl = `${parsedTarget.protocol}//${parsedTarget.host}`;
@@ -72,7 +70,6 @@ app.get('/proxy', async (req, res) => {
                 </div>
             `;
 
-            // Ayusin ang base href para sumalo ng relative links
             const baseInjection = `<base href="${baseUrl}/">`;
             if (body.includes('<head>')) {
                 body = body.replace('<head>', `<head>${baseInjection}`);
@@ -100,7 +97,6 @@ app.get('/proxy', async (req, res) => {
     }
 });
 
-// Browser Interface
 app.get('/browser', async (req, res) => {
     let queryUrl = req.query.url ? req.query.url.trim() : 'https://www.google.com';
     
@@ -113,7 +109,6 @@ app.get('/browser', async (req, res) => {
     res.redirect(`/proxy?url=${encodeURIComponent(queryUrl)}`);
 });
 
-// History Page
 app.get('/history', (req, res) => {
     let historyHtml = browserHistory.length === 0 
         ? '<p style="color:#94a3b8; font-size:11px; text-align:center; margin-top:20px;">Wala pang history.</p>'
@@ -155,7 +150,6 @@ app.get('/history', (req, res) => {
     `);
 });
 
-// Home Dashboard
 app.get('/', async (req, res) => {
     const metrics = await getServerMetrics();
     res.send(`
@@ -221,4 +215,4 @@ app.get('/', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Cloud Web Proxy running on port ${PORT}`);
 });
-        
+                                

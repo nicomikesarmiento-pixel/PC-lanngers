@@ -11,7 +11,7 @@ app.use(compression());
 app.use(cors());
 app.use(express.json());
 
-// True Cloud OS Interface na may Phone Frame, Dynamic Dock, at Cloud Stream Viewport
+// Cloud OS Interface na direktang nagbubukas ng mga apps sa malinis na tab/window
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -35,7 +35,7 @@ app.get('/', (req, res) => {
 
                 /* Main Screen Area / Home Launcher */
                 .screen-area { flex: 1; position: relative; display: flex; flex-direction: column; overflow: hidden; background: radial-gradient(circle at center, #1e1b4b 0%, #090d16 100%); }
-                .home-grid { flex: 1; padding: 35px 25px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; align-content: start; transition: opacity 0.3s ease; }
+                .home-grid { flex: 1; padding: 35px 25px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; align-content: start; }
                 
                 .app-icon-card { display: flex; flex-direction: column; align-items: center; cursor: pointer; text-decoration: none; }
                 .app-icon-card:active { transform: scale(0.90); }
@@ -47,17 +47,9 @@ app.get('/', (req, res) => {
                 
                 .app-title { font-size: 11px; margin-top: 8px; text-align: center; color: #cbd5e1; font-weight: 500; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
 
-                /* Cloud Stream App Viewport (Iframe Container para sa Server-Powered Streaming) */
-                .stream-viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: none; flex-direction: column; z-index: 20; }
-                .stream-header { height: 45px; background: #111827; display: flex; justify-content: space-between; align-items: center; padding: 0 15px; border-bottom: 1px solid #374151; }
-                .back-btn { background: #374151; color: #fff; border: none; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; }
-                .stream-title { font-size: 13px; color: #e5e7eb; font-weight: 600; }
-                .stream-frame { flex: 1; width: 100%; border: none; background: #fff; }
-
                 /* Phone Bottom Navigation Dock */
                 .nav-dock { height: 65px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(20px); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); z-index: 10; }
-                .dock-btn { background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 10px; transition: color 0.2s; }
-                .dock-btn:hover { color: #38bdf8; }
+                .dock-btn { background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 10px; }
             </style>
         </head>
         <body>
@@ -72,50 +64,38 @@ app.get('/', (req, res) => {
                     </div>
                 </div>
 
-                <!-- Screen Area -->
+                <!-- Screen Area / Home Grid -->
                 <div class="screen-area">
-                    <!-- Home Screen Grid -->
-                    <div class="home-grid" id="homeGrid">
-                        <!-- YouTube App -->
-                        <div class="app-icon-card" onclick="openApp('https://m.youtube.com', 'YouTube Cloud')">
+                    <div class="home-grid">
+                        <!-- YouTube Link -->
+                        <a href="https://m.youtube.com" target="_blank" class="app-icon-card">
                             <div class="app-logo yt-theme">▶</div>
                             <span class="app-title">YouTube</span>
-                        </div>
+                        </a>
 
-                        <!-- Facebook Videos App -->
-                        <div class="app-icon-card" onclick="openApp('https://m.facebook.com/watch', 'FB Videos')">
+                        <!-- FB Videos Link -->
+                        <a href="https://m.facebook.com/watch" target="_blank" class="app-icon-card">
                             <div class="app-logo fb-theme">🎬</div>
                             <span class="app-title">FB Videos</span>
-                        </div>
+                        </a>
 
-                        <!-- Roblox Cloud Portal -->
-                        <div class="app-icon-card" onclick="openApp('https://www.roblox.com/login', 'Roblox Cloud')">
+                        <!-- Roblox Portal -->
+                        <a href="https://www.roblox.com/login" target="_blank" class="app-icon-card">
                             <div class="app-logo rbx-theme">R</div>
                             <span class="app-title">Roblox</span>
-                        </div>
-                    </div>
-
-                    <!-- In-App Cloud Stream Viewport -->
-                    <div class="stream-viewport" id="streamViewport">
-                        <div class="stream-header">
-                            <button class="back-btn" onclick="closeApp()">‹ Home</button>
-                            <span class="stream-title" id="streamTitle">Cloud App</span>
-                            <span style="font-size: 10px; color: #10b981;">● Server Active</span>
-                        </div>
-                        <iframe class="stream-frame" id="streamFrame" src=""></iframe>
+                        </a>
                     </div>
                 </div>
 
                 <!-- Bottom Navigation Dock -->
                 <div class="nav-dock">
-                    <button class="dock-btn" onclick="closeApp()">◀</button>
-                    <button class="dock-btn" onclick="closeApp()">⌂</button>
-                    <button class="dock-btn" onclick="closeApp()">▢</button>
+                    <button class="dock-btn">◀</button>
+                    <button class="dock-btn">⌂</button>
+                    <button class="dock-btn">▢</button>
                 </div>
             </div>
 
             <script>
-                // Clock Generator
                 function updateClock() {
                     const now = new Date();
                     let hours = now.getHours();
@@ -126,25 +106,6 @@ app.get('/', (req, res) => {
                 }
                 setInterval(updateClock, 1000);
                 updateClock();
-
-                // Cloud App Streaming Handler (Server-Side Stream Simulation)
-                function openApp(url, appName) {
-                    const viewport = document.getElementById('streamViewport');
-                    const frame = document.getElementById('streamFrame');
-                    const title = document.getElementById('streamTitle');
-                    
-                    title.innerText = appName;
-                    frame.src = url;
-                    viewport.style.display = 'flex';
-                }
-
-                function closeApp() {
-                    const viewport = document.getElementById('streamViewport');
-                    const frame = document.getElementById('streamFrame');
-                    
-                    frame.src = ''; // I-stop ang stream para laging sariwa at magaan sa server
-                    viewport.style.display = 'none';
-                }
             </script>
         </body>
         </html>
@@ -152,6 +113,6 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`True Cloud OS Server is running on port ${PORT}`);
+    console.log(`Cloud OS Server is running on port ${PORT}`);
 });
-              
+             

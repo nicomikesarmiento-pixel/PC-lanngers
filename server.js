@@ -15,17 +15,16 @@ app.use(compression());
 app.use(cors());
 app.use(express.json());
 
-// Server-side fetch function para ang Cloud Server ang umako ng lahat ng trabaho at internet data
+// Server-side fetch function para ang Cloud Server ang umako ng lahat ng trabaho
 async function fetchWebsiteFromCloudServer(targetUrl) {
     try {
-        // Tinitiyak na ang server ang kumukuha ng data
         const response = await fetch(targetUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
         });
         const html = await response.text();
-        return { success: true, html, finalUrl: response.url };
+        return { success: true, html };
     } catch (error) {
         return { success: false, error: error.message };
     }
@@ -35,26 +34,23 @@ app.get('/cloud-proxy', async (req, res) => {
     let url = req.query.url;
     if (!url) return res.status(400).send('Walang URL na ibinigay.');
     
+    // Ginagamit natin ang GET-based query ng DuckDuckGo para maiwasan ang POST error
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
         url = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(url);
     }
 
-    // Ang Server ang nagpo-proseso at kumukuha ng web content
     const result = await fetchWebsiteFromCloudServer(url);
     
     if (!result.success) {
         return res.send(`
             <html><body style="background:#0f172a;color:#fff;font-family:sans-serif;padding:20px;text-align:center;">
                 <h3>⚠️ Cloud Server Notice</h3>
-                <p>Hindi maabot ng Cloud Server ang site na ito: ${errorMsg(result.error)}</p>
+                <p>Hindi maabot ng Cloud Server ang site na ito: ${result.error}</p>
                 <a href="/" style="color:#38bdf8;">Bumalik sa Home</a>
             </body></html>
         `);
     }
 
-    // Nilalagyan natin ng base tag para ang mga larawan at link ay dumaan din sa cloud server proxy
-    let processedHtml = result.html;
-    
     res.send(`
         <!DOCTYPE html>
         <html lang="tl">
@@ -74,19 +70,16 @@ app.get('/cloud-proxy', async (req, res) => {
             </div>
             <iframe id="proxied-frame" class="stream-frame"></iframe>
             <script>
-                // Ligtas na ini-inject ang HTML na galing sa Cloud Server patungo sa screen mo bilang viewer lang
                 const frame = document.getElementById('proxied-frame');
                 const doc = frame.contentDocument || frame.contentWindow.document;
                 doc.open();
-                doc.write(\`${processedHtml.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`);
+                doc.write(\`${result.html.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`);
                 doc.close();
             </script>
         </body>
         </html>
     `);
 });
-
-function errorMsg(err) { return err; }
 
 app.get('/', (req, res) => {
     res.send(`
@@ -192,12 +185,11 @@ app.get('/', (req, res) => {
 
                 function loadCloudUrl(url) {
                     document.getElementById('url-input').value = url;
-                    // Ipinapasa sa Render Server ang trabaho; ang phone mo ay magpapakita lamang ng stream/result mula sa server proxy
                     const proxyStreamUrl = '/cloud-proxy?url=' + encodeURIComponent(url);
                     
                     document.getElementById('viewer-content').innerHTML = \`
-                        <iframe src="\php \${proxyStreamUrl}" style="width: 100%; flex: 1; border: none; background: #fff;"></iframe>
-                    \`.replace('\\php ', '');
+                        <iframe src="\${proxyStreamUrl}" style="width: 100%; flex: 1; border: none; background: #fff;"></iframe>
+                    \`;
                 }
 
                 function openNotes() {
@@ -235,4 +227,3 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Cloud OS Server running on port ${PORT}`);
 });
-                                     

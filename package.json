@@ -1,7 +1,6 @@
 {
-  "name": "render-youtube-stealth-engine",
+  "name": "render-youtube-engine",
   "version": "1.0.0",
-  "description": "Direct YouTube Stealth Bypass Engine for Sketchware",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

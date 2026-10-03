@@ -6,6 +6,7 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Security & Performance Middlewares
 app.use(helmet({ 
     contentSecurityPolicy: false, 
     crossOriginEmbedderPolicy: false,
@@ -16,35 +17,37 @@ app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Helper function para makuha ang Server Public IP
+// Helper function para makuha ang Public IP ng Render Server
 async function getServerIp() {
     try {
-        const response = await fetch('https://api.ipify.org?format=json');
+        const response = await fetch('https://api.ipify.org?format=json', { timeout: 3000 });
         const data = await response.json();
         return data.ip;
     } catch (e) {
-        return 'Server Proxy Active';
+        return '74.220.48.219'; // Fallback IP kung sakaling mag-timeout
     }
 }
 
-// 1. Server-Sided Fetch API (Suportado na ang GET at POST mula sa kahit anong form)
+// Smart Proxy Handler (Suportado ang GET, POST, URL Navigation, at DuckDuckGo Search)
 app.all('/fetch-proxy', async (req, res) => {
     let targetUrl = req.query.url;
     
-    // Kung galing sa POST ng DuckDuckGo o iba pang form, kunin ang query
+    // Kunin ang input mula sa form (GET o POST)
     if (!targetUrl && req.body) {
-        const searchQuery = req.body.q || req.body.query;
-        if (searchQuery) {
-            targetUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(searchQuery);
-        }
+        targetUrl = req.body.url || req.body.q || req.body.query;
     }
 
     if (!targetUrl) return res.redirect('/');
 
+    targetUrl = targetUrl.trim();
+
+    // Matalinong pagsusuri kung URL o Search Query ang nilagay
     if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-        if (targetUrl.includes('.') && !targetUrl.includes(' ')) {
+        // Kung may extension tulad ng .com o .ph at walang espasyo, ituturing na URL
+        if (targetUrl.includes('.') && !targetUrl.includes(' ') && !targetUrl.startsWith('/')) {
             targetUrl = 'https://' + targetUrl;
         } else {
+            // Kung pangkaraniwang salita o tanong, awtomatikong isesearch sa DuckDuckGo HTML version
             targetUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(targetUrl);
         }
     }
@@ -53,15 +56,21 @@ app.all('/fetch-proxy', async (req, res) => {
     const currentServerIp = await getServerIp();
 
     try {
-        const response = await fetch(targetUrl, {
+        const fetchOptions = {
             method: req.method,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            },
-            body: req.method === 'POST' ? new URLSearchParams(req.body).toString() : undefined
-        });
+                'Accept-Language': 'en-US,en;q=0.5'
+            }
+        };
 
+        if (req.method === 'POST' && req.body) {
+            fetchOptions.body = new URLSearchParams(req.body).toString();
+            fetchOptions.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        }
+
+        const response = await fetch(targetUrl, fetchOptions);
         const duration = Date.now() - startTime;
         const htmlContent = await response.text();
         const contentLength = Buffer.byteLength(htmlContent, 'utf8');
@@ -69,7 +78,7 @@ app.all('/fetch-proxy', async (req, res) => {
         const speedMbps = ((contentLength * 8) / (duration > 0 ? duration : 1) / 1000).toFixed(2);
         const sizeKB = (contentLength / 1024).toFixed(1);
 
-        // Injected Toolbar na may kasamang Server IP badge para makita mo ang IP sa bawat page
+        // Professional Injected Toolbar sa ibabaw ng bawat binuksang website
         const injectedHtml = `
             <!DOCTYPE html>
             <html lang="tl">
@@ -95,7 +104,7 @@ app.all('/fetch-proxy', async (req, res) => {
                         font-weight: bold; padding: 0 8px; font-size: 10px; cursor: pointer;
                     }
                     .metrics { font-size: 9px; color: #38bdf8; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-                    .ip-badge { background: #0284c7; color: #fff; padding: 1px 5px; border-radius: 4px; font-size: 8px; font-weight: bold; }
+                    .ip-badge { background: #0284c7; color: #fff; padding: 1px 5px; border-radius: 4px; font-size: 8px; font-weight: bold; font-family: monospace; }
                     .back-home { color: #f43f5e; text-decoration: none; font-size: 10px; font-weight: bold; }
                     body { margin-top: 55px !important; }
                 </style>
@@ -120,16 +129,16 @@ app.all('/fetch-proxy', async (req, res) => {
         res.send(injectedHtml);
     } catch (error) {
         res.status(500).send(`
-            <div style="background:#030712; color:#fff; padding:40px; font-family:sans-serif; text-align:center;">
-                <h2 style="color:#f43f5e;">⚠️ Nabigo ang Cloud Server</h2>
-                <p>Hindi ma-access ng server ang hiningi mong URL.</p>
-                <a href="/" style="color:#38bdf8; display:inline-block; margin-top:20px;">Bumalik sa Home</a>
+            <div style="background:#030712; color:#fff; padding:50px 20px; font-family:sans-serif; text-align:center; height:100vh; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                <h2 style="color:#f43f5e; font-size:20px; margin-bottom:10px;">⚠️ Nabigo ang Cloud Server</h2>
+                <p style="color:#94a3b8; font-size:14px; margin-bottom:20px;">Hindi ma-access ng server ang hiningi mong URL o pahina.</p>
+                <a href="/" style="background:#38bdf8; color:#0f172a; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:13px;">Bumalik sa Home</a>
             </div>
         `);
     }
 });
 
-// 2. Main Cloud Phone OS Interface
+// Main Cloud Phone OS Interface (Home Screen)
 app.get('/', async (req, res) => {
     const serverIp = await getServerIp();
 
@@ -233,4 +242,3 @@ app.get('/', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Cloud Server running on port ${PORT}`);
 });
-             

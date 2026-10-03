@@ -10,7 +10,6 @@ app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Listahan ng mga lehitimong Mobile User-Agents para sa anti-bot bypass
 const MOBILE_USER_AGENTS = [
     'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
     'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
@@ -27,7 +26,6 @@ function getRandomIP() {
     return `${r()}.${r()}.${r()}.${r()}`;
 }
 
-// 1. JSON API para sa IP at Bypass status check
 app.get('/api/check-ip', async (req, res) => {
     try {
         const response = await fetch('https://api.ipify.org?format=json');
@@ -37,14 +35,13 @@ app.get('/api/check-ip', async (req, res) => {
             server: "Render Cloud Server",
             serverIp: data.ip,
             status: "Active",
-            bypassMode: "YouTube Mobile Proxy + Timeout Protection"
+            bypassMode: "YouTube Video Stream Proxy"
         });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// 2. Proxy endpoint para sa YouTube Mobile na may built-in Timeout (10 seconds)
 app.get('/proxy', async (req, res) => {
     let targetUrl = req.query.url || 'https://m.youtube.com/';
     
@@ -52,9 +49,8 @@ app.get('/proxy', async (req, res) => {
         const spoofedUserAgent = getRandomUserAgent();
         const spoofedIP = getRandomIP();
 
-        // Abort controller para hindi mag-hang ang server kapag mabagal ang YouTube response
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
 
         const response = await fetch(targetUrl, {
             headers: {
@@ -70,14 +66,14 @@ app.get('/proxy', async (req, res) => {
 
         let htmlText = await response.text();
 
-        // Pag-ayos ng mga YouTube links para dumaan din sa ating proxy
+        // I-re-route ang mga video watch at search links para dumaan sa proxy
         htmlText = htmlText.replace(/href="\/watch\?/g, 'href="/proxy?url=https://m.youtube.com/watch?');
+        htmlText = htmlText.replace(/href="\/results\?/g, 'href="/proxy?url=https://m.youtube.com/results?');
         htmlText = htmlText.replace(/href="\//g, 'href="https://m.youtube.com/');
 
-        // Floating bar sa itaas para makita ang status at IP
         const toolbarHtml = `
             <div id="proxy-top-bar" style="position:fixed; top:0; left:0; width:100%; background:#0f0f0f; color:#fff; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; z-index:999999; font-family:sans-serif; font-size:12px; border-bottom:1px solid #222;">
-                <div><b>YouTube Mobile Proxy:</b> Active (IP: ${spoofedIP})</div>
+                <div><b>YT Watch Proxy:</b> Active (IP: ${spoofedIP})</div>
                 <div>
                     <a href="/" style="color:#3ea6ff; text-decoration:none; margin-right:10px; font-weight:bold;">Home</a>
                     <button onclick="document.getElementById('proxy-top-bar').style.display='none'" style="background:#222; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Itago</button>
@@ -98,15 +94,14 @@ app.get('/proxy', async (req, res) => {
     } catch (err) {
         res.status(500).send(`
             <div style="font-family:sans-serif; text-align:center; padding:50px; background:#0f0f0f; color:#fff;">
-                <h2>Nag-timeout o nahirapan ang server sa pagkuha ng YouTube.</h2>
-                <p style="color:#aaa;">Medyo matagal ang tugon ng target server. Subukan itong i-refresh.</p>
+                <h2>Nag-timeout o nahirapan ang server sa pag-load ng video.</h2>
+                <p style="color:#aaa;">Medyo mabagal ang tugon ng YouTube. Subukang i-refresh.</p>
                 <a href="/" style="color:#3ea6ff; text-decoration:none; font-weight:bold;">Bumalik sa Home</a>
             </div>
         `);
     }
 });
 
-// 3. Main Dashboard UI
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -128,8 +123,8 @@ app.get('/', (req, res) => {
         </head>
         <body>
             <div class="card">
-                <h2>YouTube Mobile Proxy</h2>
-                <p>I-load ang YouTube mobile interface sa pamamagitan ng Render server na may IP rotation.</p>
+                <h2>YouTube Watch Proxy</h2>
+                <p>I-load ang YouTube mobile kasama ang pagpapanood ng mga video sa pamamagitan ng server.</p>
                 
                 <input type="text" id="targetUrl" value="https://m.youtube.com/">
                 <button onclick="openMobileView()">Buksan ang YouTube Mobile</button>
@@ -162,6 +157,6 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`YouTube Mobile Proxy Server running on port ${PORT}`);
+    console.log(`YouTube Watch Proxy Server running on port ${PORT}`);
 });
-    
+        

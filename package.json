@@ -1,5 +1,5 @@
 {
-  "name": "render-youtube-engine",
+  "name": "render-youtube-proxy-streamer",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {

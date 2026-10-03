@@ -16,12 +16,31 @@ app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// 1. True Server-Sided Fetch API (Lahat ng kilos ay dadaan at gagawin ng Render Server)
-app.get('/fetch-proxy', async (req, res) => {
+// Helper function para makuha ang Server Public IP
+async function getServerIp() {
+    try {
+        const response = await fetch('https://api.ipify.org?format=json');
+        const data = await response.json();
+        return data.ip;
+    } catch (e) {
+        return 'Server Proxy Active';
+    }
+}
+
+// 1. Server-Sided Fetch API (Suportado na ang GET at POST mula sa kahit anong form)
+app.all('/fetch-proxy', async (req, res) => {
     let targetUrl = req.query.url;
+    
+    // Kung galing sa POST ng DuckDuckGo o iba pang form, kunin ang query
+    if (!targetUrl && req.body) {
+        const searchQuery = req.body.q || req.body.query;
+        if (searchQuery) {
+            targetUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(searchQuery);
+        }
+    }
+
     if (!targetUrl) return res.redirect('/');
 
-    // Kung hindi URL, gawin itong DuckDuckGo search query
     if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
         if (targetUrl.includes('.') && !targetUrl.includes(' ')) {
             targetUrl = 'https://' + targetUrl;
@@ -31,26 +50,26 @@ app.get('/fetch-proxy', async (req, res) => {
     }
 
     const startTime = Date.now();
+    const currentServerIp = await getServerIp();
 
     try {
-        // Ang Render Server ang mismong kumukuha ng web page (Server-Sided Fetch)
         const response = await fetch(targetUrl, {
+            method: req.method,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5'
-            }
+            },
+            body: req.method === 'POST' ? new URLSearchParams(req.body).toString() : undefined
         });
 
         const duration = Date.now() - startTime;
         const htmlContent = await response.text();
         const contentLength = Buffer.byteLength(htmlContent, 'utf8');
         
-        // Sukat ng bilis na kinakalkula ng server
         const speedMbps = ((contentLength * 8) / (duration > 0 ? duration : 1) / 1000).toFixed(2);
         const sizeKB = (contentLength / 1024).toFixed(1);
 
-        // I-inject ang ating Custom Cloud Phone UI Toolbar sa itaas ng kahit anong website na binuksan para hindi mawala ang kontrol mo
+        // Injected Toolbar na may kasamang Server IP badge para makita mo ang IP sa bawat page
         const injectedHtml = `
             <!DOCTYPE html>
             <html lang="tl">
@@ -60,24 +79,25 @@ app.get('/fetch-proxy', async (req, res) => {
                 <title>Server-Sided Browser Preview</title>
                 <style>
                     #cloud-toolbar {
-                        position: fixed; top: 0; left: 0; width: 100%; height: 48px;
-                        background: rgba(9, 13, 22, 0.95); backdrop-filter: blur(10px);
+                        position: fixed; top: 0; left: 0; width: 100%; height: 50px;
+                        background: rgba(9, 13, 22, 0.98); backdrop-filter: blur(10px);
                         border-bottom: 1px solid rgba(255,255,255,0.1); display: flex;
-                        align-items: center; justify-content: space-between; padding: 0 15px;
+                        align-items: center; justify-content: space-between; padding: 0 10px;
                         z-index: 999999; font-family: sans-serif; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
                     }
-                    #cloud-toolbar form { display: flex; width: 60%; gap: 5px; }
+                    #cloud-toolbar form { display: flex; width: 45%; gap: 4px; }
                     #cloud-toolbar input {
-                        width: 100%; height: 30px; background: #0f172a; border: 1px solid #475569;
-                        border-radius: 6px; color: #fff; padding: 0 8px; font-size: 11px; outline: none;
+                        width: 100%; height: 28px; background: #0f172a; border: 1px solid #475569;
+                        border-radius: 6px; color: #fff; padding: 0 6px; font-size: 10px; outline: none;
                     }
                     #cloud-toolbar button {
                         background: #38bdf8; border: none; border-radius: 6px; color: #0f172a;
-                        font-weight: bold; padding: 0 10px; font-size: 11px; cursor: pointer;
+                        font-weight: bold; padding: 0 8px; font-size: 10px; cursor: pointer;
                     }
-                    .metrics { font-size: 10px; color: #38bdf8; display: flex; gap: 10px; align-items: center; }
-                    .back-home { color: #f43f5e; text-decoration: none; font-size: 11px; font-weight: bold; }
-                    body { margin-top: 50px !important; }
+                    .metrics { font-size: 9px; color: #38bdf8; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+                    .ip-badge { background: #0284c7; color: #fff; padding: 1px 5px; border-radius: 4px; font-size: 8px; font-weight: bold; }
+                    .back-home { color: #f43f5e; text-decoration: none; font-size: 10px; font-weight: bold; }
+                    body { margin-top: 55px !important; }
                 </style>
             </head>
             <body>
@@ -88,9 +108,8 @@ app.get('/fetch-proxy', async (req, res) => {
                         <button type="submit">Go</button>
                     </form>
                     <div class="metrics">
-                        <span>⚡ ${speedMbps} Mbps</span>
-                        <span>📦 ${sizeKB} KB</span>
-                        <span>⏱️ ${duration}ms</span>
+                        <span>⚡ ${speedMbps} Mbps | 📦 ${sizeKB} KB</span>
+                        <span class="ip-badge">🌐 IP: ${currentServerIp}</span>
                     </div>
                 </div>
                 ${htmlContent}
@@ -103,15 +122,17 @@ app.get('/fetch-proxy', async (req, res) => {
         res.status(500).send(`
             <div style="background:#030712; color:#fff; padding:40px; font-family:sans-serif; text-align:center;">
                 <h2 style="color:#f43f5e;">⚠️ Nabigo ang Cloud Server</h2>
-                <p>Hindi ma-access ng server ang hiningi mong URL dahil sa mahigpit na seguridad o block ng target site.</p>
+                <p>Hindi ma-access ng server ang hiningi mong URL.</p>
                 <a href="/" style="color:#38bdf8; display:inline-block; margin-top:20px;">Bumalik sa Home</a>
             </div>
         `);
     }
 });
 
-// 2. Main Cloud Phone OS Interface na may Cool Search Bar at Mbps/Metrics display
-app.get('/', (req, res) => {
+// 2. Main Cloud Phone OS Interface
+app.get('/', async (req, res) => {
+    const serverIp = await getServerIp();
+
     res.send(`
         <!DOCTYPE html>
         <html lang="tl">
@@ -129,10 +150,11 @@ app.get('/', (req, res) => {
                 .status-bar { height: 32px; background: rgba(9, 13, 22, 0.95); display: flex; justify-content: space-between; align-items: center; padding: 0 18px; font-size: 10px; font-weight: 600; color: #9ca3af; z-index: 20; border-bottom: 1px solid rgba(255,255,255,0.02); }
                 .camera-hole { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 12px; height: 12px; background: #000; border-radius: 50%; z-index: 22; }
 
-                .screen-area { flex: 1; position: relative; display: flex; flex-direction: column; background: radial-gradient(circle at center, #1e1b4b 0%, #030712 100%); padding: 24px 20px; overflow-y: auto; }
+                .screen-area { flex: 1; position: relative; display: flex; flex-direction: column; background: radial-gradient(circle at center, #1e1b4b 0%, #030712 100%); padding: 20px; overflow-y: auto; }
                 
-                .metrics-card { display: flex; justify-content: space-between; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.05); padding: 8px 14px; border-radius: 12px; margin-bottom: 15px; font-size: 10px; color: #94a3b8; }
+                .metrics-card { display: flex; flex-direction: column; gap: 4px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); padding: 10px 14px; border-radius: 12px; margin-bottom: 12px; font-size: 10px; color: #94a3b8; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
                 .metrics-card b { color: #38bdf8; }
+                .server-ip-text { color: #34d399; font-family: monospace; font-weight: bold; }
 
                 .search-box-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 16px; margin-bottom: 15px; box-shadow: 0 8px 20px rgba(0,0,0,0.5); }
                 .search-box-card h2 { font-size: 14px; color: #38bdf8; margin-bottom: 10px; }
@@ -157,8 +179,11 @@ app.get('/', (req, res) => {
 
                 <div class="screen-area">
                     <div class="metrics-card">
-                        <span>Status: <b>Online (Render)</b></span>
-                        <span>Client Speed: <b id="speed-api">4.7 Mbps (4G)</b></span>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Status: <b>Online (Render)</b></span>
+                            <span>Client Speed: <b>4.7 Mbps</b></span>
+                        </div>
+                        <div>Render Server IP: <span class="server-ip-text">${serverIp}</span></div>
                     </div>
 
                     <div class="search-box-card">
@@ -208,4 +233,4 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Cloud Server running on port ${PORT}`);
 });
-    
+             

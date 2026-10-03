@@ -6,7 +6,6 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Security & Performance Middlewares
 app.use(helmet({ 
     contentSecurityPolicy: false, 
     crossOriginEmbedderPolicy: false,
@@ -17,7 +16,6 @@ app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Helper function para makuha ang Public IP ng Render Server
 async function getServerIp() {
     try {
         const controller = new AbortController();
@@ -27,11 +25,10 @@ async function getServerIp() {
         const data = await response.json();
         return data.ip;
     } catch (e) {
-        return '74.220.48.219'; // Fallback IP kung sakaling mag-timeout
+        return '74.220.48.219';
     }
 }
 
-// Smart Proxy Handler na may Bottom Search Bar lamang at Speed Optimization
 app.all('/fetch-proxy', async (req, res) => {
     let targetUrl = req.query.url;
     
@@ -43,28 +40,18 @@ app.all('/fetch-proxy', async (req, res) => {
 
     targetUrl = targetUrl.trim();
 
-    // Matalinong pagsusuri ng URL o Search Query
+    // Matalinong pag-route: Kung YouTube link ang binigay, o kung ordinaryong salita/search
     if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
         const lowerUrl = targetUrl.toLowerCase();
         
         if (lowerUrl === 'youtube' || lowerUrl === 'yt') {
-            targetUrl = 'https://m.youtube.com';
+            targetUrl = 'https://www.youtube.com';
         } else if (lowerUrl === 'google') {
             targetUrl = 'https://www.google.com';
-        } else if (lowerUrl === 'includes' || (lowerUrl.includes('.') && !lowerUrl.includes(' ') && !lowerUrl.startsWith('/'))) {
-            targetUrl = 'https://' + targetUrl;
         } else if (lowerUrl.includes('.') && !lowerUrl.includes(' ')) {
             targetUrl = 'https://' + targetUrl;
         } else {
-            targetUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(targetUrl);
-        }
-    }
-
-    // Fix para sa maling condition sa taas kung sakaling dumaan sa tuldok
-    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-        if (targetUrl.includes('.') && !targetUrl.includes(' ')) {
-            targetUrl = 'https://' + targetUrl;
-        } else {
+            // Lahat ng hinahanap na salita ay dadaan sa DuckDuckGo para laging gumagana at walang offline error
             targetUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(targetUrl);
         }
     }
@@ -74,14 +61,14 @@ app.all('/fetch-proxy', async (req, res) => {
 
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
         const response = await fetch(targetUrl, {
             method: req.method,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Encoding': 'gzip, deflate, br'
+                'Accept-Language': 'en-US,en;q=0.5'
             },
             signal: controller.signal
         });
@@ -94,7 +81,6 @@ app.all('/fetch-proxy', async (req, res) => {
         const speedMbps = ((contentLength * 8) / (duration > 0 ? duration : 1) / 1000).toFixed(2);
         const sizeKB = (contentLength / 1024).toFixed(1);
 
-        // Minimalist top indicator lamang (walang search bar sa itaas), at Professional Search Bar sa ibaba
         const injectedHtml = `
             <!DOCTYPE html>
             <html lang="tl">
@@ -114,7 +100,6 @@ app.all('/fetch-proxy', async (req, res) => {
                     .metrics { font-size: 9px; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
                     .ip-badge { background: #0284c7; color: #fff; padding: 1px 5px; border-radius: 4px; font-size: 8px; font-weight: bold; font-family: monospace; }
 
-                    /* Professional Search Bar sa Ibaba Lamang */
                     #bottom-search-bar {
                         position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(9, 13, 22, 0.98);
                         backdrop-filter: blur(10px); border-top: 1px solid rgba(255,255,255,0.1); padding: 10px 15px;
@@ -166,7 +151,6 @@ app.all('/fetch-proxy', async (req, res) => {
     }
 });
 
-// Main Cloud Phone OS Interface (Home Screen)
 app.get('/', async (req, res) => {
     const serverIp = await getServerIp();
 

@@ -37,45 +37,50 @@ app.get('/api/check-ip', async (req, res) => {
             server: "Render Cloud Server",
             serverIp: data.ip,
             status: "Active",
-            bypassMode: "Full Mobile View Proxy + Random IP Rotation"
+            bypassMode: "YouTube Mobile Proxy + Timeout Protection"
         });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// 2. Proxy endpoint para kunin at i-render ang mismong Facebook Mobile HTML
+// 2. Proxy endpoint para sa YouTube Mobile na may built-in Timeout (10 seconds)
 app.get('/proxy', async (req, res) => {
-    let targetUrl = req.query.url || 'https://m.facebook.com/watch/';
+    let targetUrl = req.query.url || 'https://m.youtube.com/';
     
     try {
         const spoofedUserAgent = getRandomUserAgent();
         const spoofedIP = getRandomIP();
 
+        // Abort controller para hindi mag-hang ang server kapag mabagal ang YouTube response
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
         const response = await fetch(targetUrl, {
             headers: {
                 'User-Agent': spoofedUserAgent,
-                'Accept-Language': 'en-US,en;q=0.9,fil;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'X-Forwarded-For': spoofedIP,
                 'Cache-Control': 'no-cache'
-            }
+            },
+            signal: controller.signal
         });
+        clearTimeout(timeoutId);
 
         let htmlText = await response.text();
 
-        // Pag-ayos ng mga relative links para dumaan ulit sa ating proxy sa halip na masira
-        htmlText = htmlText.replace(/href="\/watch\//g, 'href="/proxy?url=https://m.facebook.com/watch/');
-        htmlText = htmlText.replace(/href="\/videos\//g, 'href="/proxy?url=https://m.facebook.com/videos/');
-        htmlText = htmlText.replace(/href="\//g, 'href="https://m.facebook.com/');
+        // Pag-ayos ng mga YouTube links para dumaan din sa ating proxy
+        htmlText = htmlText.replace(/href="\/watch\?/g, 'href="/proxy?url=https://m.youtube.com/watch?');
+        htmlText = htmlText.replace(/href="\//g, 'href="https://m.youtube.com/');
 
-        // Magdagdag ng maliit na Floating Bar sa itaas para makita ang IP at makapagpalit ng URL kung kailangan
+        // Floating bar sa itaas para makita ang status at IP
         const toolbarHtml = `
-            <div id="proxy-top-bar" style="position:fixed; top:0; left:0; width:100%; background:#18191a; color:#fff; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; z-index:999999; font-family:sans-serif; font-size:12px; border-bottom:1px solid #333;">
-                <div><b>FB Mobile Proxy:</b> Active (IP: ${spoofedIP})</div>
+            <div id="proxy-top-bar" style="position:fixed; top:0; left:0; width:100%; background:#0f0f0f; color:#fff; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; z-index:999999; font-family:sans-serif; font-size:12px; border-bottom:1px solid #222;">
+                <div><b>YouTube Mobile Proxy:</b> Active (IP: ${spoofedIP})</div>
                 <div>
-                    <a href="/" style="color:#2d88ff; text-decoration:none; margin-right:10px; font-weight:bold;">Home</a>
-                    <button onclick="document.getElementById('proxy-top-bar').style.display='none'" style="background:#333; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Itago</button>
+                    <a href="/" style="color:#3ea6ff; text-decoration:none; margin-right:10px; font-weight:bold;">Home</a>
+                    <button onclick="document.getElementById('proxy-top-bar').style.display='none'" style="background:#222; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Itago</button>
                 </div>
             </div>
             <div style="height:40px;"></div>
@@ -91,11 +96,17 @@ app.get('/proxy', async (req, res) => {
         res.send(htmlText);
 
     } catch (err) {
-        res.status(500).send(`May error sa pagkuha ng pahina: ${err.message}`);
+        res.status(500).send(`
+            <div style="font-family:sans-serif; text-align:center; padding:50px; background:#0f0f0f; color:#fff;">
+                <h2>Nag-timeout o nahirapan ang server sa pagkuha ng YouTube.</h2>
+                <p style="color:#aaa;">Medyo matagal ang tugon ng target server. Subukan itong i-refresh.</p>
+                <a href="/" style="color:#3ea6ff; text-decoration:none; font-weight:bold;">Bumalik sa Home</a>
+            </div>
+        `);
     }
 });
 
-// 3. Main Dashboard UI (Kung saan ilalagay ang link o direktang bubuksan)
+// 3. Main Dashboard UI
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -103,27 +114,27 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>FB Watch Full Mobile UI Proxy</title>
+            <title>YouTube Mobile Proxy Suite</title>
             <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #18191a; color: #e4e6eb; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; box-sizing: border-box; }
-                .card { background: #242526; padding: 24px; border-radius: 12px; width: 100%; max-width: 450px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid #393a3b; text-align: center; }
-                h2 { color: #2d88ff; margin-bottom: 8px; font-size: 22px; }
-                p { font-size: 13px; color: #b0b3b8; margin-bottom: 20px; }
-                input { width: 100%; padding: 12px; border-radius: 6px; border: 1px solid #393a3b; background: #3a3b3c; color: #fff; font-size: 14px; outline: none; box-sizing: border-box; margin-bottom: 12px; }
-                button { width: 100%; padding: 12px; background: #1877f2; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 15px; }
-                button:hover { background: #166fe5; }
-                .ip-status { margin-top: 15px; font-size: 12px; color: #45bd62; word-break: break-all; }
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f0f0f; color: #fff; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; box-sizing: border-box; }
+                .card { background: #212121; padding: 24px; border-radius: 12px; width: 100%; max-width: 450px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid #333; text-align: center; }
+                h2 { color: #ff0000; margin-bottom: 8px; font-size: 22px; }
+                p { font-size: 13px; color: #aaa; margin-bottom: 20px; }
+                input { width: 100%; padding: 12px; border-radius: 6px; border: 1px solid #333; background: #121212; color: #fff; font-size: 14px; outline: none; box-sizing: border-box; margin-bottom: 12px; }
+                button { width: 100%; padding: 12px; background: #ff0000; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 15px; }
+                button:hover { background: #cc0000; }
+                .ip-status { margin-top: 15px; font-size: 12px; color: #2ba640; word-break: break-all; }
             </style>
         </head>
         <body>
             <div class="card">
-                <h2>FB Watch Full Mobile View</h2>
-                <p>I-load ang orihinal na Facebook mobile watch interface sa pamamagitan ng server proxy.</p>
+                <h2>YouTube Mobile Proxy</h2>
+                <p>I-load ang YouTube mobile interface sa pamamagitan ng Render server na may IP rotation.</p>
                 
-                <input type="text" id="targetUrl" value="https://m.facebook.com/watch/">
-                <button onclick="openMobileView()">Buksan ang Facebook Mobile UI</button>
+                <input type="text" id="targetUrl" value="https://m.youtube.com/">
+                <button onclick="openMobileView()">Buksan ang YouTube Mobile</button>
                 
-                <div class="ip-status" id="ipStatus">Checking server proxy status...</div>
+                <div class="ip-status" id="ipStatus">Kinukuha ang status...</div>
             </div>
 
             <script>
@@ -151,6 +162,6 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`FB Full Mobile Proxy Server running on port ${PORT}`);
+    console.log(`YouTube Mobile Proxy Server running on port ${PORT}`);
 });
     

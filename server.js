@@ -15,6 +15,79 @@ app.use(compression());
 app.use(cors());
 app.use(express.json());
 
+// Server-side fetch function para ang Cloud Server ang umako ng lahat ng trabaho at internet data
+async function fetchWebsiteFromCloudServer(targetUrl) {
+    try {
+        // Tinitiyak na ang server ang kumukuha ng data
+        const response = await fetch(targetUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+        const html = await response.text();
+        return { success: true, html, finalUrl: response.url };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
+
+app.get('/cloud-proxy', async (req, res) => {
+    let url = req.query.url;
+    if (!url) return res.status(400).send('Walang URL na ibinigay.');
+    
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(url);
+    }
+
+    // Ang Server ang nagpo-proseso at kumukuha ng web content
+    const result = await fetchWebsiteFromCloudServer(url);
+    
+    if (!result.success) {
+        return res.send(`
+            <html><body style="background:#0f172a;color:#fff;font-family:sans-serif;padding:20px;text-align:center;">
+                <h3>⚠️ Cloud Server Notice</h3>
+                <p>Hindi maabot ng Cloud Server ang site na ito: ${errorMsg(result.error)}</p>
+                <a href="/" style="color:#38bdf8;">Bumalik sa Home</a>
+            </body></html>
+        `);
+    }
+
+    // Nilalagyan natin ng base tag para ang mga larawan at link ay dumaan din sa cloud server proxy
+    let processedHtml = result.html;
+    
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="tl">
+        <head>
+            <meta charset="UTF-8">
+            <title>Cloud Stream View</title>
+            <style>
+                body { margin: 0; background: #0f172a; color: #fff; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+                .top-bar { background: #1e293b; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; font-size: 11px; }
+                .stream-frame { flex: 1; width: 100%; border: none; background: #fff; }
+            </style>
+        </head>
+        <body>
+            <div class="top-bar">
+                <span style="color: #38bdf8;">☁️ Cloud Server Processed (Zero Phone Load)</span>
+                <a href="#" onclick="parent.closeApp()" style="color: #f97316; text-decoration: none; font-weight: bold;">✕ Isara</a>
+            </div>
+            <iframe id="proxied-frame" class="stream-frame"></iframe>
+            <script>
+                // Ligtas na ini-inject ang HTML na galing sa Cloud Server patungo sa screen mo bilang viewer lang
+                const frame = document.getElementById('proxied-frame');
+                const doc = frame.contentDocument || frame.contentWindow.document;
+                doc.open();
+                doc.write(\`${processedHtml.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`);
+                doc.close();
+            </script>
+        </body>
+        </html>
+    `);
+});
+
+function errorMsg(err) { return err; }
+
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -22,7 +95,7 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-            <title>Cloud OS Pro - Virtual Phone</title>
+            <title>Cloud OS Pro - Remote Viewer</title>
             <style>
                 * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
                 body, html { width: 100%; height: 100%; background-color: #030712; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #fff; overflow: hidden; display: flex; justify-content: center; align-items: center; }
@@ -51,7 +124,7 @@ app.get('/', (req, res) => {
                 .viewer-header { height: 46px; background: #1e293b; display: flex; align-items: center; padding: 0 10px; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
                 .back-btn { background: #334155; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 11px; }
                 .url-bar { flex: 1; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 5px 10px; font-size: 11px; color: #e5e7eb; outline: none; }
-                .viewer-body { flex: 1; width: 100%; background: #0f172a; border: none; padding: 16px; overflow-y: auto; }
+                .viewer-body { flex: 1; width: 100%; background: #0f172a; border: none; display: flex; flex-direction: column; }
 
                 .nav-dock { height: 48px; background: rgba(9, 13, 22, 0.95); backdrop-filter: blur(20px); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.04); z-index: 20; flex-shrink: 0; }
                 .dock-btn { background: none; border: none; color: #9ca3af; font-size: 16px; cursor: pointer; padding: 8px; }
@@ -63,14 +136,14 @@ app.get('/', (req, res) => {
                 <div class="status-bar">
                     <span id="clock">12:00 PM</span>
                     <div class="status-icons">
-                        <span>🔒 Cloud Net</span>
+                        <span>☁️ Cloud Engine</span>
                         <span>🔋 100%</span>
                     </div>
                 </div>
 
                 <div class="screen-area">
                     <div class="home-grid">
-                        <button class="app-icon-card" onclick="openBrowser()">
+                        <button class="app-icon-card" onclick="openBrowser('https://html.duckduckgo.com/html/')">
                             <div class="app-logo browser-theme">🦆</div>
                             <span class="app-title">Duck Browser</span>
                         </button>
@@ -88,7 +161,7 @@ app.get('/', (req, res) => {
                 <div id="app-viewer">
                     <div class="viewer-header">
                         <button class="back-btn" onclick="closeApp()">‹ Home</button>
-                        <input type="text" id="url-input" class="url-bar" value="https://duck.com/search" readonly />
+                        <input type="text" id="url-input" class="url-bar" placeholder="Mag-type ng URL o Search..." onkeydown="if(event.key === 'Enter') loadCloudUrl(this.value)" />
                     </div>
                     <div id="viewer-content" class="viewer-body"></div>
                 </div>
@@ -112,56 +185,28 @@ app.get('/', (req, res) => {
                 setInterval(updateClock, 1000);
                 updateClock();
 
-                function openBrowser() {
-                    document.getElementById('url-input').value = "https://duck.com/search";
-                    renderSearchHome("");
+                function openBrowser(targetUrl) {
                     document.getElementById('app-viewer').style.display = 'flex';
+                    loadCloudUrl(targetUrl);
                 }
 
-                function renderSearchHome(query) {
-                    let resultsHTML = "";
-                    if (query) {
-                        resultsHTML = \`
-                            <div style="margin-top: 15px;">
-                                <p style="font-size: 11px; color: #94a3b8; margin-bottom: 10px;">Mga resulta para sa: "<b>\${query}</b>"</p>
-                                <div style="background: #1e293b; padding: 10px; border-radius: 8px; margin-bottom: 8px;">
-                                    <a href="#" onclick="alert('Naglo-load ng cloud proxy result...')" style="color: #38bdf8; font-size: 12px; text-decoration: none; font-weight: bold;">Official \${query} - Cloud Stream Portal</a>
-                                    <p style="color: #94a3b8; font-size: 10px; margin-top: 3px;">https://secure.cloud-proxy.internal/\${query}</p>
-                                </div>
-                                <div style="background: #1e293b; padding: 10px; border-radius: 8px;">
-                                    <a href="#" onclick="alert('Secure sandbox active.')" style="color: #38bdf8; font-size: 12px; text-decoration: none; font-weight: bold;">Mobile Web App Version of \${query}</a>
-                                    <p style="color: #94a3b8; font-size: 10px; margin-top: 3px;">Tumatakbo nang ligtas sa loob ng Cloud Phone.</p>
-                                </div>
-                            </div>
-                        \`;
-                    }
-
+                function loadCloudUrl(url) {
+                    document.getElementById('url-input').value = url;
+                    // Ipinapasa sa Render Server ang trabaho; ang phone mo ay magpapakita lamang ng stream/result mula sa server proxy
+                    const proxyStreamUrl = '/cloud-proxy?url=' + encodeURIComponent(url);
+                    
                     document.getElementById('viewer-content').innerHTML = \`
-                        <div style="text-align: center; padding-top: 5px;">
-                            <h2 style="color: #f97316; font-size: 18px; margin-bottom: 4px;">🦆 Duck Browser</h2>
-                            <p style="color: #94a3b8; font-size: 11px; margin-bottom: 15px;">Secure Cloud Proxy Search Engine</p>
-                            <div style="display: flex; gap: 6px; max-width: 300px; margin: 0 auto;">
-                                <input type="text" id="search-box" value="\${query}" placeholder="Maghanap dito..." style="flex: 1; padding: 7px 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #fff; font-size: 11px; outline: none;">
-                                <button onclick="performSearch()" style="background: #f97316; color: white; border: none; padding: 0 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 12px;">🔍</button>
-                            </div>
-                            \${resultsHTML}
-                        </div>
-                    \`;
-                }
-
-                function performSearch() {
-                    const val = document.getElementById('search-box').value;
-                    if(val) {
-                        document.getElementById('url-input').value = "https://duck.com/q=" + encodeURIComponent(val);
-                        renderSearchHome(val);
-                    }
+                        <iframe src="\php \${proxyStreamUrl}" style="width: 100%; flex: 1; border: none; background: #fff;"></iframe>
+                    \`.replace('\\php ', '');
                 }
 
                 function openNotes() {
                     document.getElementById('url-input').value = "cloud://notes/app";
                     document.getElementById('viewer-content').innerHTML = \`
-                        <h2 style="color: #3b82f6; font-size: 16px; margin-bottom: 6px;">📝 Cloud Notes</h2>
-                        <textarea style="width: 100%; height: 200px; background: #1e293b; color: #fff; border: 1px solid #334155; border-radius: 6px; padding: 10px; font-size: 11px; outline: none;" placeholder="Magsulat dito..."></textarea>
+                        <div style="padding: 15px; flex: 1; background: #0f172a;">
+                            <h2 style="color: #3b82f6; font-size: 16px; margin-bottom: 6px;">📝 Cloud Notes</h2>
+                            <textarea style="width: 100%; height: calc(100% - 30px); background: #1e293b; color: #fff; border: 1px solid #334155; border-radius: 6px; padding: 10px; font-size: 11px; outline: none;" placeholder="Magsulat dito..."></textarea>
+                        </div>
                     \`;
                     document.getElementById('app-viewer').style.display = 'flex';
                 }
@@ -169,8 +214,10 @@ app.get('/', (req, res) => {
                 function openGames() {
                     document.getElementById('url-input').value = "cloud://games/portal";
                     document.getElementById('viewer-content').innerHTML = \`
-                        <h2 style="color: #10b981; font-size: 16px; margin-bottom: 6px;">🎮 Mini Games</h2>
-                        <p style="color: #94a3b8; font-size: 11px;">Mag-enjoy sa mga cloud-rendered apps dito nang ligtas.</p>
+                        <div style="padding: 15px; flex: 1; background: #0f172a;">
+                            <h2 style="color: #10b981; font-size: 16px; margin-bottom: 6px;">🎮 Mini Games</h2>
+                            <p style="color: #94a3b8; font-size: 11px;">Mag-enjoy sa mga cloud-rendered apps dito nang ligtas.</p>
+                        </div>
                     \`;
                     document.getElementById('app-viewer').style.display = 'flex';
                 }
@@ -188,3 +235,4 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Cloud OS Server running on port ${PORT}`);
 });
+                                     

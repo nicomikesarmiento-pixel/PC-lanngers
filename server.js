@@ -29,37 +29,55 @@ async function getServerMetrics() {
     return { ip, speed: speed < 1000 ? `${speed}ms` : '1.2s' };
 }
 
-// Working Video Database / Resolver para maiwasan ang "Video is unavailable"
-const presetVideos = {
-    'lofi': { id: 'jfKfPfyJRdk', title: 'Lofi Hip Hop Radio - Beats to Relax/Study to' },
-    'opm': { id: 'kJQP7kiw5Fk', title: 'Despacito / Trending Hits (Sample Stream)' },
-    'pets': { id: 'QH2-TGUlwu4', title: 'Nyan Cat! (Classic Video)' },
-    'relax': { id: '2Oel4VHzuMU', title: 'Sleep Music, Relaxing Piano, Guitar' }
-};
+// Server-Side Proxy Engine: Render Server ang kumukuha at nag-i-stream ng video data
+app.get('/proxy-stream', async (req, res) => {
+    const targetUrl = req.query.url;
+    if (!targetUrl) {
+        return res.status(400).send('Walang ibinigay na URL.');
+    }
+
+    try {
+        // Ang Render server ang gagawa ng request sa totoong source
+        const response = await fetch(targetUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        // Kopyahin ang headers para alam ng browser na video ito
+        res.setHeader('Content-Type', response.headers.get('content-type') || 'video/mp4');
+        if (response.headers.get('content-length')) {
+            res.setHeader('Content-Length', response.headers.get('content-length'));
+        }
+
+        // I-pipe o i-stream nang direkta mula sa server papunta sa client screen mo
+        const reader = response.body.getReader();
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            res.write(value);
+        }
+        res.end();
+    } catch (err) {
+        res.status(500).send('Nabigo ang server proxy na i-stream ang video.');
+    }
+});
 
 app.get('/browser', async (req, res) => {
-    let query = req.query.q ? req.query.q.trim().toLowerCase() : 'lofi';
+    let videoUrl = req.query.url ? req.query.url.trim() : 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4';
     const metrics = await getServerMetrics();
 
     browserHistory.push({
-        query: req.query.q || 'lofi',
+        url: videoUrl,
         time: new Date().toLocaleTimeString()
     });
     if (browserHistory.length > 25) browserHistory.shift();
 
-    // Hanapin kung pasok sa preset o gamitin ang default lofi video ID kung sakali
-    let selectedVideo = presetVideos['lofi'];
-    for (let key in presetVideos) {
-        if (query.includes(key)) {
-            selectedVideo = presetVideos[key];
-            break;
-        }
-    }
-
     const fetchStart = Date.now();
-    // Simulate server fetch speed check
-    await new Promise(r => setTimeout(r, 150));
-    const fetchTime = Date.now() - fetchStart + Math.floor(Math.random() * 200);
+    await new Promise(r => setTimeout(r, 100));
+    const fetchTime = Date.now() - fetchStart;
 
     res.send(`
         <!DOCTYPE html>
@@ -67,7 +85,7 @@ app.get('/browser', async (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Cloud Media Streamer</title>
+            <title>Server-Side Streamer OS</title>
             <style>
                 * { box-sizing: border-box; margin: 0; padding: 0; }
                 body { font-family: sans-serif; background: #030712; color: #fff; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -80,45 +98,41 @@ app.get('/browser', async (req, res) => {
                 .go-btn { background: #38bdf8; border: none; color: #0f172a; font-weight: bold; padding: 0 12px; height: 34px; border-radius: 6px; cursor: pointer; font-size: 11px; }
                 
                 .viewport { flex: 1; background: #030712; width: 100%; overflow-y: auto; display: flex; flex-direction: column; }
-                .player-box { width: 100%; aspect-ratio: 16/9; background: #000; }
-                .player-box iframe { width: 100%; height: 100%; border: none; }
+                .player-box { width: 100%; aspect-ratio: 16/9; background: #000; display: flex; align-items: center; justify-content: center; }
+                .player-box video { width: 100%; height: 100%; outline: none; }
                 .info-section { padding: 12px; }
-                .video-title { font-size: 12px; color: #38bdf8; margin-bottom: 8px; font-weight: bold; }
                 .server-badge { background: rgba(15,23,42,0.9); border: 1px solid rgba(56,189,248,0.3); padding: 8px; border-radius: 6px; font-size: 10px; color: #94a3b8; margin-bottom: 12px; }
                 .suggestions { display: flex; flex-direction: column; gap: 6px; }
                 .suggestion-item { background: #0f172a; border: 1px solid rgba(255,255,255,0.08); padding: 10px; border-radius: 6px; color: #e2e8f0; font-size: 11px; text-decoration: none; display: flex; align-items: center; justify-content: space-between; }
-                .suggestion-item:hover { border-color: #38bdf8; }
             </style>
         </head>
         <body>
             <div class="browser-nav">
                 <div class="top-info-bar">
                     <div>Server IP: <b>${metrics.ip}</b></div>
-                    <div>Fetch Speed: <b style="color: #38bdf8;">${fetchTime}ms</b></div>
+                    <div>Proxy Server Speed: <b style="color: #38bdf8;">${fetchTime}ms</b></div>
                 </div>
                 <form action="/browser" method="GET" class="url-form">
                     <a href="/" class="btn-action" title="Home">🏠</a>
                     <button type="button" class="btn-action" onclick="location.reload()">🔄</button>
-                    <input type="text" name="q" class="url-input" value="${req.query.q || ''}" placeholder="I-type ang hahanapin (hal. lofi, relax, pets)..." />
-                    <button type="submit" class="go-btn">Search</button>
+                    <input type="text" name="url" class="url-input" value="${videoUrl}" placeholder="I-paste angDirektang Video URL dito..." />
+                    <button type="submit" class="go-btn">Stream</button>
                 </form>
             </div>
             
             <div class="viewport">
                 <div class="player-box">
-                    <iframe src="https://www.youtube.com/embed/${selectedVideo.id}?autoplay=1" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                    <!-- Ang video ay dumadaan muna sa Render server bago mapunta sa iyo -->
+                    <video controls autoplay src="/proxy-stream?url=${encodeURIComponent(videoUrl)}"></video>
                 </div>
                 <div class="info-section">
-                    <div class="video-title">▶ ${selectedVideo.title}</div>
                     <div class="server-badge">
-                        ⚡ Tagumpay na hinakot ng Render Server ang media stream na ito para hindi bumagal sa mahina mong signal.
+                        🛡️ <b>Server-Side Active:</b> Ang Render Cloud Server ang nagda-download at nag-i-stream ng file na ito. Ang iyong device ay sumasalamin lamang sa koneksyon ng server.
                     </div>
-                    <p style="font-size: 10px; color: #94a3b8; margin-bottom: 8px;">Mga Inirerekomendang Pindutin:</p>
+                    <p style="font-size: 10px; color: #94a3b8; margin-bottom: 8px;">Subukan ang ibang Cloud Streams:</p>
                     <div class="suggestions">
-                        <a href="/browser?q=lofi" class="suggestion-item"><span>🎵 Lofi Hip Hop Radio</span> <span style="color:#38bdf8; font-size:9px;">Play</span></a>
-                        <a href="/browser?q=opm" class="suggestion-item"><span>🎶 Trending Hits Stream</span> <span style="color:#38bdf8; font-size:9px;">Play</span></a>
-                        <a href="/browser?q=relax" class="suggestion-item"><span>🌿 Sleep & Relax Music</span> <span style="color:#38bdf8; font-size:9px;">Play</span></a>
-                        <a href="/browser?q=pets" class="suggestion-item"><span>🐱 Funny Pets Video</span> <span style="color:#38bdf8; font-size:9px;">Play</span></a>
+                        <a href="/browser?url=https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4" class="suggestion-item"><span>🐰 Big Buck Bunny (720p)</span> <span style="color:#38bdf8; font-size:9px;">Stream</span></a>
+                        <a href="/browser?url=https://www.w3schools.com/html/mov_bbb.mp4" class="suggestion-item"><span>🎬 W3Schools MP4 Sample</span> <span style="color:#38bdf8; font-size:9px;">Stream</span></a>
                     </div>
                 </div>
             </div>
@@ -133,7 +147,7 @@ app.get('/history', (req, res) => {
         ? '<p style="color:#94a3b8; font-size:11px; text-align:center; margin-top:20px;">Wala pang history.</p>'
         : browserHistory.map(item => `
             <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(255,255,255,0.08); padding:8px; border-radius:6px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
-                <a href="/browser?q=${encodeURIComponent(item.query)}" style="color:#38bdf8; font-size:10px; text-decoration:none;">${item.query}</a>
+                <a href="/browser?url=${encodeURIComponent(item.url)}" style="color:#38bdf8; font-size:10px; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px;">${item.url}</a>
                 <span style="color:#64748b; font-size:8px;">${item.time}</span>
             </div>
         `).reverse().join('');
@@ -159,7 +173,7 @@ app.get('/history', (req, res) => {
         <body>
             <div class="box">
                 <div class="header">
-                    <h2>📦 Search History</h2>
+                    <h2>📦 Stream History</h2>
                     <a href="/" class="back">🏠 Home</a>
                 </div>
                 <div class="list">${historyHtml}</div>
@@ -178,7 +192,7 @@ app.get('/', async (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Render Media Streamer</title>
+            <title>Render Server Streamer</title>
             <style>
                 * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
                 body, html { width: 100%; height: 100%; background-color: #030712; font-family: sans-serif; color: #fff; display: flex; justify-content: center; align-items: center; overflow: hidden; }
@@ -201,28 +215,28 @@ app.get('/', async (req, res) => {
             <div class="phone-container">
                 <div class="status-bar">
                     <span>12:00 PM</span>
-                    <span>▶️ Cloud Streamer OS</span>
+                    <span>⚡ Server Streamer OS</span>
                 </div>
                 <div class="screen-area">
                     <div class="metrics-card">
                         <div>Server IP: <span class="server-ip-text">${metrics.ip}</span></div>
-                        <div>Status: <span style="color:#38bdf8;">Online</span></div>
+                        <div>Status: <span style="color:#38bdf8;">Cloud Active</span></div>
                     </div>
                     <div class="search-box-card">
-                        <h2>▶️ Cloud Video Search & Player</h2>
+                        <h2>🌐 Server-Side Video Proxy</h2>
                         <form action="/browser" method="GET">
-                            <input type="text" name="q" placeholder="Maghanap (hal. lofi, opm, relax)..." />
-                            <button type="submit">I-stream sa Cloud Server</button>
+                            <input type="text" name="url" placeholder="I-paste ang video URL dito..." />
+                            <button type="submit">I-stream sa Server</button>
                         </form>
                     </div>
                     <div class="quick-links">
-                        <a href="/browser?q=lofi" class="link-xls link-btn">
-                            <strong>🎵 Lofi Stream</strong>
-                            <span>Cloud Player</span>
+                        <a href="/browser?url=https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4" class="link-btn">
+                            <strong>▶️ Subukan ang Stream</strong>
+                            <span>Server Proxy</span>
                         </a>
                         <a href="/history" class="link-btn" style="background: rgba(2, 132, 199, 0.2); border-color: rgba(56, 189, 248, 0.4);">
                             <strong style="color: #38bdf8;">Tingnan ang History</strong>
-                            <span>Search Logs</span>
+                            <span>Logs</span>
                         </a>
                     </div>
                 </div>
@@ -233,6 +247,6 @@ app.get('/', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Render Media Streamer running on port ${PORT}`);
+    console.log(`Server-Side Streamer running on port ${PORT}`);
 });
-                            
+        

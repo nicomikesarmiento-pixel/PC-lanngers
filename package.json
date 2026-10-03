@@ -1,7 +1,7 @@
 {
-  "name": "fb-watch-proxy",
+  "name": "youtube-mobile-proxy",
   "version": "1.0.0",
-  "description": "Facebook Watch Mobile Proxy Server",
+  "description": "YouTube Mobile Proxy Server with IP Rotation",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

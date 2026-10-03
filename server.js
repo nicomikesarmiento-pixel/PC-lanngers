@@ -13,58 +13,72 @@ app.use(helmet({
 }));
 app.use(compression());
 app.use(cors());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Server-side Cloud Storage & Session State (Nakatago sa Render Server, hindi sa phone)
-let cloudSession = {
-    currentUrl: 'https://html.duckduckgo.com/html/',
-    lastQuery: '',
-    pageContent: '<h3 style="color:#38bdf8; text-align:center; margin-top:40px;">Handa na ang Cloud Server. Mag-search na.</h3>',
-    status: 'Idle - Server Active'
-};
+// Server-Sided Proxy Route: Ang Render server ang bibili/kukuha ng web page para sa iyo
+app.all('/proxy', async (req, res) => {
+    let targetUrl = req.query.url || req.body.url;
+    
+    if (!targetUrl) {
+        return res.send(`
+            <div style="font-family:sans-serif; text-align:center; padding:30px; background:#030712; color:#fff; height:100vh;">
+                <h3>Ligtas na Server-Sided Proxy</h3>
+                <form action="/proxy" method="GET" style="margin-top:20px;">
+                    <input type="text" name="url" placeholder="https://myipaddress.com" style="padding:10px; width:70%; max-width:400px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#fff;" />
+                    <button type="submit" style="padding:10px 20px; background:#38bdf8; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">Go</button>
+                </form>
+            </div>
+        `);
+    }
 
-// API para i-handle ng Server ang pag-internet kahit nasaan ka o kahit mahina/nawawala ang signal sa phone
-app.post('/api/cloud-command', async (req, res) => {
-    const { action, query } = req.body;
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+        targetUrl = 'https://' + targetUrl;
+    }
 
-    if (action === 'search') {
-        let targetUrl = query;
-        if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-            targetUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(targetUrl);
+    try {
+        // Ang Render server ang kumukonekta sa target website (Server-sided IP na ang gagamitin)
+        const response = await fetch(targetUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+            }
+        });
+
+        let html = await response.text();
+        
+        // Mag-inject ng maliit na header bar sa itaas para madali kang makalipat ng site habang nasa loob ng server proxy
+        const toolbar = `
+            <div style="position:fixed; top:0; left:0; width:100%; height:40px; background:#0f172a; border-bottom:1px solid #334155; display:flex; align-items:center; padding:0 10px; z-index:999999; box-shadow:0 4px 10px rgba(0,0,0,0.5);">
+                <form action="/proxy" method="GET" style="display:flex; width:100%; gap:8px; align-items:center;">
+                    <a href="/" style="color:#38bdf8; text-decoration:none; font-size:12px; font-weight:bold;">🏠 Home</a>
+                    <input type="text" name="url" value="${targetUrl}" style="flex:1; height:26px; background:#1e293b; border:1px solid #475569; border-radius:4px; color:#fff; padding:0 8px; font-size:11px;" />
+                    <button type="submit" style="background:#38bdf8; border:none; color:#0f172a; font-weight:bold; height:26px; padding:0 10px; border-radius:4px; font-size:11px; cursor:pointer;">Go</button>
+                </form>
+            </div>
+            <div style="height:40px;"></div>
+        `;
+
+        if (html.includes('<body')) {
+            html = html.replace('<body', toolbar + '<body');
+        } else {
+            html = toolbar + html;
         }
 
-        cloudSession.lastQuery = query;
-        cloudSession.currentUrl = targetUrl;
-        cloudSession.status = 'Fetching on Server...';
-
-        try {
-            // Ang Render Server ang kumukuha ng website (Zero load sa phone)
-            const response = await fetch(targetUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-                }
-            });
-            let html = await response.text();
-            
-            // Nililinis natin ang HTML para diretso itong maipakita sa cloud screen mo
-            cloudSession.pageContent = html;
-            cloudSession.status = 'Loaded by Cloud Server';
-            res.json({ success: true, status: cloudSession.status });
-        } catch (error) {
-            cloudSession.pageContent = `<div style="color:red; padding:20px;">Error sa Cloud Server: ${error.message}</div>`;
-            cloudSession.status = 'Error';
-            res.json({ success: false, error: error.message });
-        }
-    } else {
-        res.json({ success: true, session: cloudSession });
+        res.send(html);
+    } catch (error) {
+        res.status(500).send(`
+            <div style="font-family:sans-serif; padding:20px; background:#030712; color:#ef4444; height:100vh;">
+                <h3>Nabigo ang Server-Sided Fetch</h3>
+                <p>Hindi maabot ng Render server ang URL: ${targetUrl}</p>
+                <p style="color:#94a3b8; font-size:12px;">Error: ${error.message}</p>
+                <a href="/" style="color:#38bdf8;">Bumalik</a>
+            </div>
+        `);
     }
 });
 
-// API para kunin ng phone ang kasalukuyang screen mula sa server
-app.get('/api/cloud-state', (req, res) => {
-    res.json(cloudSession);
-});
-
+// Main Dashboard ng Cloud Phone OS
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -72,39 +86,30 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-            <title>Cloud OS Pro - True Cloud Phone</title>
+            <title>Server-Sided Cloud OS</title>
             <style>
-                * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-                body, html { width: 100%; height: 100%; background-color: #030712; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #fff; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+                * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+                body, html { width: 100%; height: 100%; background-color: #030712; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #fff; display: flex; justify-content: center; align-items: center; overflow: hidden; }
                 
                 .phone-container { width: 100vw; height: 100vh; max-width: 380px; max-height: 740px; background: #090d16; display: flex; flex-direction: column; position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.95); overflow: hidden; }
                 @media(min-width: 420px) { .phone-container { border-radius: 36px; border: 8px solid #111827; height: 92vh; max-height: 760px; } }
 
-                .status-bar { height: 32px; background: rgba(9, 13, 22, 0.95); display: flex; justify-content: space-between; align-items: center; padding: 0 18px; font-size: 10px; font-weight: 600; color: #9ca3af; z-index: 20; border-bottom: 1px solid rgba(255,255,255,0.02); flex-shrink: 0; }
+                .status-bar { height: 32px; background: rgba(9, 13, 22, 0.95); display: flex; justify-content: space-between; align-items: center; padding: 0 18px; font-size: 10px; font-weight: 600; color: #9ca3af; z-index: 20; border-bottom: 1px solid rgba(255,255,255,0.02); }
                 .camera-hole { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 12px; height: 12px; background: #000; border-radius: 50%; z-index: 22; }
-                .status-icons { display: flex; gap: 6px; font-size: 9px; color: #38bdf8; align-items: center; }
 
-                .screen-area { flex: 1; position: relative; display: flex; flex-direction: column; overflow-y: auto; background: radial-gradient(circle at center, #1e1b4b 0%, #030712 100%); }
-                .home-grid { padding: 24px 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; align-content: start; }
+                .screen-area { flex: 1; position: relative; display: flex; flex-direction: column; background: radial-gradient(circle at center, #1e1b4b 0%, #030712 100%); padding: 24px 20px; }
                 
-                .app-icon-card { display: flex; flex-direction: column; align-items: center; cursor: pointer; text-decoration: none; border: none; background: none; }
-                .app-icon-card:active { transform: scale(0.88); transition: transform 0.1s; }
-                .app-logo { width: 52px; height: 52px; border-radius: 16px; display: flex; justify-content: center; align-items: center; font-size: 22px; box-shadow: 0 8px 20px rgba(0,0,0,0.6); backdrop-filter: blur(12px); }
-                
-                .browser-theme { background: linear-gradient(135deg, #f97316, #c2410c); color: white; }
-                .notes-theme { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; }
-                .games-theme { background: linear-gradient(135deg, #10b981, #047857); color: white; font-size: 18px; }
-                
-                .app-title { font-size: 10px; margin-top: 6px; text-align: center; color: #e2e8f0; font-weight: 500; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+                .search-box-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 16px; margin-bottom: 20px; box-shadow: 0 8px 20px rgba(0,0,0,0.5); }
+                .search-box-card h2 { font-size: 14px; color: #38bdf8; margin-bottom: 10px; }
+                .search-box-card input { width: 100%; height: 36px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: #fff; padding: 0 10px; font-size: 12px; outline: none; margin-bottom: 10px; }
+                .search-box-card button { width: 100%; height: 36px; background: linear-gradient(135deg, #38bdf8, #0284c7); border: none; border-radius: 8px; color: #0f172a; font-weight: bold; font-size: 12px; cursor: pointer; }
 
-                #app-viewer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; z-index: 100; display: none; flex-direction: column; }
-                .viewer-header { height: 46px; background: #1e293b; display: flex; align-items: center; padding: 0 10px; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
-                .back-btn { background: #334155; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 11px; }
-                .url-bar { flex: 1; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 5px 10px; font-size: 11px; color: #e5e7eb; outline: none; }
-                .viewer-body { flex: 1; width: 100%; background: #fff; border: none; display: flex; flex-direction: column; overflow-y: auto; }
+                .quick-links { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+                .link-btn { background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.08); padding: 14px; border-radius: 12px; text-align: left; color: #e2e8f0; font-size: 12px; cursor: pointer; text-decoration: none; display: flex; flex-direction: column; gap: 4px; }
+                .link-btn span { font-size: 10px; color: #94a3b8; }
 
-                .nav-dock { height: 48px; background: rgba(9, 13, 22, 0.95); backdrop-filter: blur(20px); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.04); z-index: 20; flex-shrink: 0; }
-                .dock-btn { background: none; border: none; color: #9ca3af; font-size: 16px; cursor: pointer; padding: 8px; }
+                .nav-dock { height: 48px; background: rgba(9, 13, 22, 0.95); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.04); }
+                .dock-btn { background: none; border: none; color: #9ca3af; font-size: 16px; cursor: pointer; }
             </style>
         </head>
         <body>
@@ -112,43 +117,34 @@ app.get('/', (req, res) => {
                 <div class="camera-hole"></div>
                 <div class="status-bar">
                     <span id="clock">12:00 PM</span>
-                    <div class="status-icons">
-                        <span id="server-status">☁️ Server Active</span>
-                        <span>🔋 100%</span>
-                    </div>
+                    <span>☁️ Server-Sided IP Active</span>
                 </div>
 
                 <div class="screen-area">
-                    <div class="home-grid">
-                        <button class="app-icon-card" onclick="openBrowser()">
-                            <div class="app-logo browser-theme">🦆</div>
-                            <span class="app-title">Cloud Browser</span>
-                        </button>
-                        <button class="app-icon-card" onclick="openNotes()">
-                            <div class="app-logo notes-theme">📝</div>
-                            <span class="app-title">Notes</span>
-                        </button>
-                        <button class="app-icon-card" onclick="openGames()">
-                            <div class="app-logo games-theme">🎮</div>
-                            <span class="app-title">Mini Games</span>
-                        </button>
+                    <div class="search-box-card">
+                        <h2>🌐 Server-Sided Browser</h2>
+                        <form action="/proxy" method="GET">
+                            <input type="text" name="url" placeholder="I-type ang URL o search query..." />
+                            <button type="submit">Buksan sa Cloud Server</button>
+                        </form>
                     </div>
-                </div>
 
-                <div id="app-viewer">
-                    <div class="viewer-header">
-                        <button class="back-btn" onclick="closeApp()">‹ Home</button>
-                        <input type="text" id="url-input" class="url-bar" placeholder="Mag-type ng Search query..." onkeydown="if(event.key === 'Enter') sendCloudCommand(this.value)" />
-                    </div>
-                    <div id="viewer-content" class="viewer-body">
-                        <!-- Dito ipinapakita ng server ang nakuha niyang pahina -->
+                    <div class="quick-links">
+                        <a href="/proxy?url=https://myipaddress.com" class="link-btn">
+                            <strong>Check IP</strong>
+                            <span>Tingnan ang Server IP</span>
+                        </a>
+                        <a href="/proxy?url=https://html.duckduckgo.com/html/" class="link-btn">
+                            <strong>DuckDuckGo</strong>
+                            <span>Mag-browse via Server</span>
+                        </a>
                     </div>
                 </div>
 
                 <div class="nav-dock">
-                    <button class="dock-btn" onclick="closeApp()">◀</button>
-                    <button class="dock-btn" onclick="closeApp()">⌂</button>
-                    <button class="dock-btn" onclick="closeApp()">▢</button>
+                    <button class="dock-btn">◀</button>
+                    <button class="dock-btn">⌂</button>
+                    <button class="dock-btn">▢</button>
                 </div>
             </div>
 
@@ -163,64 +159,6 @@ app.get('/', (req, res) => {
                 }
                 setInterval(updateClock, 1000);
                 updateClock();
-
-                function openBrowser() {
-                    document.getElementById('app-viewer').style.display = 'flex';
-                    fetchCloudState();
-                }
-
-                async function sendCloudCommand(query) {
-                    document.getElementById('server-status').innerText = '☁️ Pinoproseso ng Server...';
-                    try {
-                        const res = await fetch('/api/cloud-command', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'search', query: query })
-                        });
-                        const data = await res.json();
-                        fetchCloudState();
-                    } catch (e) {
-                        document.getElementById('server-status').innerText = '⚠️ Walang Koneksyon sa Server';
-                    }
-                }
-
-                async function fetchCloudState() {
-                    try {
-                        const res = await fetch('/api/cloud-state');
-                        const data = await res.json();
-                        document.getElementById('url-input').value = data.lastQuery || data.currentUrl;
-                        document.getElementById('viewer-content').innerHTML = data.pageContent;
-                        document.getElementById('server-status').innerText = '☁️ ' + data.status;
-                    } catch (e) {
-                        document.getElementById('server-status').innerText = '⚠️️ Offline mode';
-                    }
-                }
-
-                function openNotes() {
-                    document.getElementById('url-input').value = "cloud://notes";
-                    document.getElementById('viewer-content').innerHTML = \`
-                        <div style="padding: 15px; background: #0f172a; height: 100%; color: #fff;">
-                            <h2 style="color: #3b82f6; font-size: 16px; margin-bottom: 6px;">📝 Cloud Notes</h2>
-                            <textarea style="width: 100%; height: 80%; background: #1e293b; color: #fff; border: 1px solid #334155; border-radius: 6px; padding: 10px; font-size: 11px; outline: none;" placeholder="Nakatago sa server..."></textarea>
-                        </div>
-                    \`;
-                    document.getElementById('app-viewer').style.display = 'flex';
-                }
-
-                function openGames() {
-                    document.getElementById('url-input').value = "cloud://games";
-                    document.getElementById('viewer-content').innerHTML = \`
-                        <div style="padding: 15px; background: #0f172a; height: 100%; color: #fff;">
-                            <h2 style="color: #10b981; font-size: 16px; margin-bottom: 6px;">🎮 Cloud Mini Games</h2>
-                            <p style="color: #94a3b8; font-size: 11px;">Rendered by Cloud Server.</p>
-                        </div>
-                    \`;
-                    document.getElementById('app-viewer').style.display = 'flex';
-                }
-
-                function closeApp() {
-                    document.getElementById('app-viewer').style.display = 'none';
-                }
             </script>
         </body>
         </html>
@@ -228,5 +166,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`True Cloud OS Server running on port ${PORT}`);
+    console.log(`Server-Sided Proxy running on port ${PORT}`);
 });

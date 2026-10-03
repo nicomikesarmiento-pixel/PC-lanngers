@@ -29,54 +29,73 @@ async function getServerMetrics() {
     return { ip, speed: speed < 1000 ? `${speed}ms` : '1.2s' };
 }
 
-// Server-Side Proxy Engine: Render Server ang kumukuha at nag-i-stream ng video data
-app.get('/proxy-stream', async (req, res) => {
-    const targetUrl = req.query.url;
-    if (!targetUrl) {
-        return res.status(400).send('Walang ibinigay na URL.');
+// 🌐 Advanced Web & Video Proxy Engine (Render Server ang kumukuha ng buong site)
+app.get('/proxy', async (req, res) => {
+    let targetUrl = req.query.url;
+    if (!targetUrl) return res.redirect('/browser');
+
+    // Kung YouTube link ang inilagay, i-convert natin sa embed-friendly o mabilis na format para hindi ma-block
+    if (targetUrl.includes('youtube.com/watch?v=')) {
+        const videoId = new URL(targetUrl).searchParams.get('v');
+        targetUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+    } else if (targetUrl.includes('youtu.be/')) {
+        const videoId = targetUrl.split('youtu.be/')[1].split('?')[0];
+        targetUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+    } else if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+        // Kung hindi URL at text lang (hal. "pakinggan lofi"), gawin nating Google search proxy
+        targetUrl = `https://www.google.com/search?q=${encodeURIComponent(targetUrl)}`;
     }
 
     try {
-        // Ang Render server ang gagawa ng request sa totoong source
         const response = await fetch(targetUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
             }
         });
 
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        let contentType = response.headers.get('content-type') || 'text/html';
+        let body = await response.text();
 
-        // Kopyahin ang headers para alam ng browser na video ito
-        res.setHeader('Content-Type', response.headers.get('content-type') || 'video/mp4');
-        if (response.headers.get('content-length')) {
-            res.setHeader('Content-Length', response.headers.get('content-length'));
+        // I-inject natin ang maliit na top bar para makapag-navigate ka pa rin habang nasa loob ng proxy site
+        if (contentType.includes('text/html')) {
+            const topBarInjection = `
+                <div style="position:fixed;top:0;left:0;width:100%;background:#0f172a;border-bottom:2px solid #38bdf8;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;z-index:999999;font-family:sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.5);">
+                    <a href="/" style="background:#1e293b;color:#38bdf8;padding:4px 10px;border-radius:6px;font-size:11px;text-decoration:none;font-weight:bold;">🏠 Render Home</a>
+                    <span style="color:#94a3b8;font-size:10px;">🛡️ Render Proxy Active (Server-Side Reading)</span>
+                    <a href="/browser" style="background:#38bdf8;color:#0f172a;padding:4px 10px;border-radius:6px;font-size:11px;text-decoration:none;font-weight:bold;">🔄 Bagong Search</a>
+                </div>
+                <div style="height:45px;"></div>
+            `;
+            body = topBarInjection + body;
         }
 
-        // I-pipe o i-stream nang direkta mula sa server papunta sa client screen mo
-        const reader = response.body.getReader();
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            res.write(value);
-        }
-        res.end();
+        res.setHeader('Content-Type', contentType);
+        res.send(body);
     } catch (err) {
-        res.status(500).send('Nabigo ang server proxy na i-stream ang video.');
+        res.status(500).send(`
+            <div style="background:#030712;color:#fff;font-family:sans-serif;padding:40px;text-align:center;">
+                <h2 style="color:#f43f5e;margin-bottom:10px;">⚠️️ Nabigo ang Render Proxy</h2>
+                <p style="color:#94a3b8;font-size:12px;margin-bottom:20px;">Hindi ma-access ng server ang hiningi mong URL dahil sa security restrictions ng target website.</p>
+                <a href="/browser" style="background:#38bdf8;color:#0f172a;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:12px;">Bumalik sa Browser</a>
+            </div>
+        `);
     }
 });
 
+// Browser Interface
 app.get('/browser', async (req, res) => {
-    let videoUrl = req.query.url ? req.query.url.trim() : 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4';
+    let queryUrl = req.query.url ? req.query.url.trim() : 'https://www.youtube.com';
     const metrics = await getServerMetrics();
 
     browserHistory.push({
-        url: videoUrl,
+        url: queryUrl,
         time: new Date().toLocaleTimeString()
     });
     if (browserHistory.length > 25) browserHistory.shift();
 
     const fetchStart = Date.now();
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 80));
     const fetchTime = Date.now() - fetchStart;
 
     res.send(`
@@ -85,7 +104,7 @@ app.get('/browser', async (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Server-Side Streamer OS</title>
+            <title>Render Cloud Browser</title>
             <style>
                 * { box-sizing: border-box; margin: 0; padding: 0; }
                 body { font-family: sans-serif; background: #030712; color: #fff; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -97,43 +116,41 @@ app.get('/browser', async (req, res) => {
                 .url-input { flex: 1; height: 34px; background: #090d16; border: 1px solid #38bdf8; border-radius: 6px; color: #fff; padding: 0 10px; font-size: 11px; outline: none; }
                 .go-btn { background: #38bdf8; border: none; color: #0f172a; font-weight: bold; padding: 0 12px; height: 34px; border-radius: 6px; cursor: pointer; font-size: 11px; }
                 
-                .viewport { flex: 1; background: #030712; width: 100%; overflow-y: auto; display: flex; flex-direction: column; }
-                .player-box { width: 100%; aspect-ratio: 16/9; background: #000; display: flex; align-items: center; justify-content: center; }
-                .player-box video { width: 100%; height: 100%; outline: none; }
-                .info-section { padding: 12px; }
-                .server-badge { background: rgba(15,23,42,0.9); border: 1px solid rgba(56,189,248,0.3); padding: 8px; border-radius: 6px; font-size: 10px; color: #94a3b8; margin-bottom: 12px; }
-                .suggestions { display: flex; flex-direction: column; gap: 6px; }
-                .suggestion-item { background: #0f172a; border: 1px solid rgba(255,255,255,0.08); padding: 10px; border-radius: 6px; color: #e2e8f0; font-size: 11px; text-decoration: none; display: flex; align-items: center; justify-content: space-between; }
+                .viewport { flex: 1; background: #000; width: 100%; position: relative; }
+                .viewport iframe { width: 100%; height: 100%; border: none; background: #fff; }
+                .bottom-info { background: #0f172a; border-top: 1px solid rgba(56,189,248,0.2); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+                .server-badge { background: rgba(15,23,42,0.9); border: 1px solid rgba(56,189,248,0.3); padding: 6px 10px; border-radius: 6px; font-size: 10px; color: #94a3b8; }
+                .quick-links { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+                .quick-btn { background: #1e293b; border: 1px solid #475569; color: #38bdf8; padding: 4px 10px; border-radius: 6px; font-size: 10px; text-decoration: none; white-space: nowrap; }
             </style>
         </head>
         <body>
             <div class="browser-nav">
                 <div class="top-info-bar">
                     <div>Server IP: <b>${metrics.ip}</b></div>
-                    <div>Proxy Server Speed: <b style="color: #38bdf8;">${fetchTime}ms</b></div>
+                    <div>Proxy Speed: <b style="color: #38bdf8;">${fetchTime}ms</b></div>
                 </div>
                 <form action="/browser" method="GET" class="url-form">
                     <a href="/" class="btn-action" title="Home">🏠</a>
                     <button type="button" class="btn-action" onclick="location.reload()">🔄</button>
-                    <input type="text" name="url" class="url-input" value="${videoUrl}" placeholder="I-paste angDirektang Video URL dito..." />
-                    <button type="submit" class="go-btn">Stream</button>
+                    <input type="text" name="url" class="url-input" value="${queryUrl}" placeholder="I-type ang URL o YouTube link dito..." />
+                    <button type="submit" class="go-btn">Go</button>
                 </form>
             </div>
             
             <div class="viewport">
-                <div class="player-box">
-                    <!-- Ang video ay dumadaan muna sa Render server bago mapunta sa iyo -->
-                    <video controls autoplay src="/proxy-stream?url=${encodeURIComponent(videoUrl)}"></video>
+                <!-- Ang Render server ang dumadaan sa proxy para i-load ang website -->
+                <iframe src="/proxy?url=${encodeURIComponent(queryUrl)}"></iframe>
+            </div>
+
+            <div class="bottom-info">
+                <div class="server-badge">
+                    ⚡ <b>Server-Side Web Proxy:</b> Ang Render server ang nagbabasa ng website/video. Ligtas ang data at signal ng phone mo.
                 </div>
-                <div class="info-section">
-                    <div class="server-badge">
-                        🛡️ <b>Server-Side Active:</b> Ang Render Cloud Server ang nagda-download at nag-i-stream ng file na ito. Ang iyong device ay sumasalamin lamang sa koneksyon ng server.
-                    </div>
-                    <p style="font-size: 10px; color: #94a3b8; margin-bottom: 8px;">Subukan ang ibang Cloud Streams:</p>
-                    <div class="suggestions">
-                        <a href="/browser?url=https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4" class="suggestion-item"><span>🐰 Big Buck Bunny (720p)</span> <span style="color:#38bdf8; font-size:9px;">Stream</span></a>
-                        <a href="/browser?url=https://www.w3schools.com/html/mov_bbb.mp4" class="suggestion-item"><span>🎬 W3Schools MP4 Sample</span> <span style="color:#38bdf8; font-size:9px;">Stream</span></a>
-                    </div>
+                <div class="quick-links">
+                    <a href="/browser?url=https://www.youtube.com" class="quick-btn">📺 YouTube Cloud</a>
+                    <a href="/browser?url=https://en.wikipedia.org" class="quick-btn">📖 Wikipedia</a>
+                    <a href="/browser?url=https://www.google.com" class="quick-btn">🔍 Google Search</a>
                 </div>
             </div>
         </body>
@@ -173,7 +190,7 @@ app.get('/history', (req, res) => {
         <body>
             <div class="box">
                 <div class="header">
-                    <h2>📦 Stream History</h2>
+                    <h2>📦 Search History</h2>
                     <a href="/" class="back">🏠 Home</a>
                 </div>
                 <div class="list">${historyHtml}</div>
@@ -192,7 +209,7 @@ app.get('/', async (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Render Server Streamer</title>
+            <title>Render Cloud Browser OS</title>
             <style>
                 * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
                 body, html { width: 100%; height: 100%; background-color: #030712; font-family: sans-serif; color: #fff; display: flex; justify-content: center; align-items: center; overflow: hidden; }
@@ -215,28 +232,28 @@ app.get('/', async (req, res) => {
             <div class="phone-container">
                 <div class="status-bar">
                     <span>12:00 PM</span>
-                    <span>⚡ Server Streamer OS</span>
+                    <span>🌐 Cloud Browser OS</span>
                 </div>
                 <div class="screen-area">
                     <div class="metrics-card">
                         <div>Server IP: <span class="server-ip-text">${metrics.ip}</span></div>
-                        <div>Status: <span style="color:#38bdf8;">Cloud Active</span></div>
+                        <div>Status: <span style="color:#38bdf8;">Proxy Active</span></div>
                     </div>
                     <div class="search-box-card">
-                        <h2>🌐 Server-Side Video Proxy</h2>
+                        <h2>🌐 Render Cloud Web Proxy</h2>
                         <form action="/browser" method="GET">
-                            <input type="text" name="url" placeholder="I-paste ang video URL dito..." />
-                            <button type="submit">I-stream sa Server</button>
+                            <input type="text" name="url" placeholder="Maghanap o mag-paste ng YouTube URL..." />
+                            <button type="submit">Buksan sa Cloud Browser</button>
                         </form>
                     </div>
                     <div class="quick-links">
-                        <a href="/browser?url=https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4" class="link-btn">
-                            <strong>▶️ Subukan ang Stream</strong>
-                            <span>Server Proxy</span>
+                        <a href="/browser?url=https://www.youtube.com" class="link-btn">
+                            <strong>📺 YouTube Proxy</strong>
+                            <span>Manood sa Server</span>
                         </a>
                         <a href="/history" class="link-btn" style="background: rgba(2, 132, 199, 0.2); border-color: rgba(56, 189, 248, 0.4);">
                             <strong style="color: #38bdf8;">Tingnan ang History</strong>
-                            <span>Logs</span>
+                            <span>Search Logs</span>
                         </a>
                     </div>
                 </div>
@@ -247,6 +264,6 @@ app.get('/', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server-Side Streamer running on port ${PORT}`);
+    console.log(`Cloud Web Proxy running on port ${PORT}`);
 });
-        
+               

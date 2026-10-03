@@ -1,14 +1,17 @@
 {
-  "name": "lite-browser",
+  "name": "render-custom-api-engine",
   "version": "1.0.0",
+  "description": "Custom API and Signal Offloading Engine for Sketchware Clone Apps",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "helmet": "^7.1.0",
     "compression": "^1.7.4",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
